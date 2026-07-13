@@ -60,7 +60,7 @@ class TuiDashboard:
             + " ctrl-c=neutralize and exit", "",
         ]
         if state_name == "manual":
-            lines.extend(["[Manual Controller]", "A enters from detector; ROBOT_START_STATE=manual starts here. Non-stick input exits safely."])
+            lines.extend(["[Manual Controller]", "A enters from detector; any non-stick input kills outputs in every state."])
             lines.extend(result.state_lines)
         else:
             lines.append("[Detector]")

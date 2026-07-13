@@ -85,9 +85,10 @@ class ControllerInput:
         return self.device is not None
 
     def poll(self, manual_active):
+        """Return manual-entry and global controller-kill requests."""
         update = ControllerUpdate()
         if self.device is None:
-            if manual_active and self.disconnected:
+            if self.disconnected:
                 update.abort_manual = True
                 update.abort_reason = self.error or "controller disconnected"
             return update
@@ -99,9 +100,8 @@ class ControllerInput:
             self.error = "controller disconnected: " + str(error)
             self.device = None
             self.disconnected = True
-            if manual_active:
-                update.abort_manual = True
-                update.abort_reason = self.error
+            update.abort_manual = True
+            update.abort_reason = self.error
             return update
 
         for event in events:
@@ -111,12 +111,12 @@ class ControllerInput:
                     if event.value == 1 and not manual_active:
                         update.start_manual = True
                     continue
-                if manual_active and event.value == 1:
+                if event.value == 1:
                     update.abort_manual = True
                     update.abort_reason = "button " + self._key_name(event.code)
             elif event.type == self.ecodes.EV_ABS:
                 self.axis_values[event.code] = event.value
-                if manual_active and event.code not in self._stick_axes():
+                if event.code not in self._stick_axes():
                     update.abort_manual = True
                     update.abort_reason = "non-stick axis " + self._axis_name(event.code)
         return update

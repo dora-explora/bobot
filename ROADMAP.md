@@ -63,7 +63,8 @@ sudo apt install -y python3-evdev
 
 While running `main.py`, press the controller A button to enter manual tank
 drive. The left and right vertical sticks control the matching motor sides.
-Any non-stick controller input neutralizes every output and exits the runtime.
+Any non-stick controller input neutralizes every output and exits the runtime,
+including while the robot is in detector mode.
 Use `CONTROLLER_DEVICE=/dev/input/eventN` if automatic gamepad discovery picks
 the wrong device. The manual TUI temporarily includes raw input diagnostics.
 Use `ROBOT_START_STATE=manual python3 main.py` to start in the manual debug

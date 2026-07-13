@@ -153,14 +153,14 @@ def run():
                 fps = 1.0 / max(.001, now - last_frame_time)
             last_frame_time = now
             controller_update = controller.poll(active_state == "manual")
+            if controller_update.abort_manual:
+                actuators.neutralize()
+                print("Controller kill: " + controller_update.abort_reason + ". Outputs neutralized; exiting.")
+                break
             if active_state == "detector" and controller_update.start_manual:
                 active_state = "manual"
                 actuators.neutralize()
                 print("Controller A pressed. Entered manual tank-drive mode.")
-            elif active_state == "manual" and controller_update.abort_manual:
-                actuators.neutralize()
-                print("Manual input aborted: " + controller_update.abort_reason + ". Outputs neutralized; exiting.")
-                break
 
             state = states[active_state]
             result = state.process(frame, now)
