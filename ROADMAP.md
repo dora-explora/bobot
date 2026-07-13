@@ -66,6 +66,9 @@ drive. The left and right vertical sticks control the matching motor sides.
 Any non-stick controller input neutralizes every output and exits the runtime.
 Use `CONTROLLER_DEVICE=/dev/input/eventN` if automatic gamepad discovery picks
 the wrong device. The manual TUI temporarily includes raw input diagnostics.
+Use `ROBOT_START_STATE=manual python3 main.py` to start in the manual debug
+state without first matching the A-button mapping. `START_STATE=manual` is
+also accepted as an alias.
 
 Useful tuning variables:
 
@@ -112,6 +115,7 @@ STEERING_GAIN=1.25
 STEERING_DEADBAND=0.06
 CLOSE_BALL_AREA_RATIO=0.18
 LOST_TARGET_TIMEOUT=0.5
+ROBOT_START_STATE=detector
 CONTROLLER_DEVICE=auto
 CONTROLLER_A_BUTTON=304
 CONTROLLER_LEFT_X_AXIS=0

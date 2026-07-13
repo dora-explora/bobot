@@ -90,7 +90,7 @@ COURSE_SECTIONS = {
     "rough_section": RoughSection,
     "hill_climb": HillClimb,
 }
-ACTIVE_STATE = "detector"
+ACTIVE_STATE = config.ROBOT_START_STATE
 
 
 def draw_overlay(frame, result):
@@ -126,6 +126,10 @@ def run():
         "detector": DetectorState(),
         "manual": ManualState(controller),
     }
+    if ACTIVE_STATE not in states:
+        raise ValueError(
+            "ROBOT_START_STATE must be one of: " + ", ".join(sorted(states))
+        )
     active_state = ACTIVE_STATE
     dashboard = TuiDashboard()
     camera = None

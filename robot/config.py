@@ -90,6 +90,10 @@ STEERING_GAIN = env_float("STEERING_GAIN", "1.25")
 STEERING_DEADBAND = env_float("STEERING_DEADBAND", "0.06")
 CLOSE_BALL_AREA_RATIO = env_float("CLOSE_BALL_AREA_RATIO", "0.18")
 LOST_TARGET_TIMEOUT = env_float("LOST_TARGET_TIMEOUT", "0.5")
+ROBOT_START_STATE = os.environ.get(
+    "ROBOT_START_STATE",
+    os.environ.get("START_STATE", "detector"),
+).lower()
 
 # Linux gamepad configuration. Defaults follow the common evdev gamepad map.
 CONTROLLER_DEVICE = os.environ.get("CONTROLLER_DEVICE", "auto")

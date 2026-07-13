@@ -22,6 +22,9 @@ class ControllerInput:
         self.last_event = "none"
         self.axis_values = {}
         self.axis_ranges = {}
+        self.supported_axis_codes = []
+        self.supported_key_codes = []
+        self.disconnected = False
         self._connect()
 
     def _connect(self):
@@ -33,6 +36,7 @@ class ControllerInput:
 
         self.ecodes = ecodes
         paths = [config.CONTROLLER_DEVICE] if config.CONTROLLER_DEVICE != "auto" else list_devices()
+        candidates = []
         for path in paths:
             try:
                 device = InputDevice(path)
@@ -41,22 +45,39 @@ class ControllerInput:
                 axes = capabilities.get(ecodes.EV_ABS, [])
                 key_codes = [item[0] if isinstance(item, tuple) else item for item in keys]
                 axis_codes = [item[0] if isinstance(item, tuple) else item for item in axes]
-                if config.CONTROLLER_A_BUTTON not in key_codes or config.CONTROLLER_LEFT_Y_AXIS not in axis_codes:
+                if config.CONTROLLER_DEVICE == "auto" and (not axis_codes or not key_codes):
                     device.close()
                     continue
-                device.set_blocking(False)
-                self.device = device
-                self.error = ""
-                for item in axes:
-                    if isinstance(item, tuple):
-                        code, info = item
-                        self.axis_ranges[code] = (info.min, info.max)
-                self.last_event = "connected " + device.path + " " + device.name
-                return
+                score = (
+                    (10 if config.CONTROLLER_RIGHT_Y_AXIS in axis_codes else 0)
+                    + (10 if config.CONTROLLER_LEFT_Y_AXIS in axis_codes else 0)
+                    + (5 if config.CONTROLLER_A_BUTTON in key_codes else 0)
+                    + min(len(axis_codes), 8)
+                )
+                candidates.append((score, device, keys, axes, key_codes, axis_codes))
             except Exception as error:
                 self.error = "controller open failed: " + str(error)
-        if config.CONTROLLER_DEVICE == "auto" and not self.error:
-            self.error = "no compatible gamepad found"
+
+        if not candidates:
+            if not self.error:
+                self.error = "no controller-like evdev device found"
+            return
+
+        _, device, keys, axes, key_codes, axis_codes = max(candidates, key=lambda item: item[0])
+        for _, other, *_ in candidates:
+            if other is not device:
+                other.close()
+        device.set_blocking(False)
+        self.device = device
+        self.error = ""
+        self.disconnected = False
+        self.supported_key_codes = sorted(key_codes)
+        self.supported_axis_codes = sorted(axis_codes)
+        for item in axes:
+            if isinstance(item, tuple):
+                code, info = item
+                self.axis_ranges[code] = (info.min, info.max)
+        self.last_event = "connected " + device.path + " " + device.name
 
     @property
     def connected(self):
@@ -65,7 +86,7 @@ class ControllerInput:
     def poll(self, manual_active):
         update = ControllerUpdate()
         if self.device is None:
-            if manual_active:
+            if manual_active and self.disconnected:
                 update.abort_manual = True
                 update.abort_reason = self.error or "controller disconnected"
             return update
@@ -76,6 +97,7 @@ class ControllerInput:
         except OSError as error:
             self.error = "controller disconnected: " + str(error)
             self.device = None
+            self.disconnected = True
             if manual_active:
                 update.abort_manual = True
                 update.abort_reason = self.error
@@ -111,6 +133,8 @@ class ControllerInput:
             "right_y raw=" + str(self.axis_values.get(config.CONTROLLER_RIGHT_Y_AXIS, "n/a")) + " command=" + str(round(right, 3)),
             "axes Lx/Ly/Rx/Ry=" + "/".join(str(code) for code in self._stick_axes())
             + " A_button=" + str(config.CONTROLLER_A_BUTTON) + " deadzone=" + str(config.CONTROLLER_DEADZONE),
+            "detected axes=" + self._code_list(self.supported_axis_codes, self._axis_name),
+            "detected keys=" + self._code_list(self.supported_key_codes, self._key_name),
         ] + (["error=" + self.error] if self.error else [])
 
     def close(self):
@@ -147,7 +171,17 @@ class ControllerInput:
         return "event type=" + str(event.type) + " code=" + str(event.code) + " value=" + str(event.value)
 
     def _key_name(self, code):
+        if self.ecodes is None:
+            return str(code)
         return str(self.ecodes.bytype[self.ecodes.EV_KEY].get(code, code))
 
     def _axis_name(self, code):
+        if self.ecodes is None:
+            return str(code)
         return str(self.ecodes.bytype[self.ecodes.EV_ABS].get(code, code))
+
+    @staticmethod
+    def _code_list(codes, name_for_code):
+        if not codes:
+            return "none"
+        return ", ".join(str(code) + ":" + name_for_code(code) for code in codes[:12])
