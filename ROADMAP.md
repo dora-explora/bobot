@@ -84,7 +84,6 @@ MOTOR_STEERING_MIX=0.08
 THROTTLE_NEUTRAL_US=1500
 THROTTLE_FORWARD_US=1600
 THROTTLE_REVERSE_US=1400
-ESC_ARM_SECONDS=3.0
 ENABLE_THROTTLE=false
 THROTTLE_HARD_LIMIT=0.12
 THROTTLE_MIN_ACTIVE=0.06
@@ -104,8 +103,7 @@ LOST_TARGET_TIMEOUT=0.5
 
 - Test all four ESC channels with wheels off the ground first.
 - Keep `ENABLE_ACTUATORS=false` until PWM ranges are confirmed.
-- Start the program before driving and let it hold neutral during `ESC_ARM_SECONDS`.
-- Keep `ENABLE_THROTTLE=false` until the car is lifted or restrained; neutral is still sent for ESC arming.
+- Keep `ENABLE_THROTTLE=false` until the car is lifted or restrained.
 - `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.
 - Use Ctrl-C to exit; the program neutralizes all four motor channels in its shutdown path.
 - Add a physical kill switch before any fast or untethered run.

@@ -39,7 +39,6 @@ STEERING_SERVO_MAX_US = int(os.environ.get("STEERING_SERVO_MAX_US", "2500"))
 THROTTLE_NEUTRAL_US = int(os.environ.get("THROTTLE_NEUTRAL_US", "1500"))
 THROTTLE_FORWARD_US = int(os.environ.get("THROTTLE_FORWARD_US", "1600"))
 THROTTLE_REVERSE_US = int(os.environ.get("THROTTLE_REVERSE_US", "1400"))
-ESC_ARM_SECONDS = float(os.environ.get("ESC_ARM_SECONDS", "3.0"))
 THROTTLE_HARD_LIMIT = float(os.environ.get("THROTTLE_HARD_LIMIT", "0.12"))
 THROTTLE_MIN_ACTIVE = float(os.environ.get("THROTTLE_MIN_ACTIVE", "0.06"))
 THROTTLE_ALLOW_REVERSE = os.environ.get("THROTTLE_ALLOW_REVERSE", "false").lower()
@@ -444,7 +443,6 @@ class TuiDashboard:
             + " FR=" + self.motor_status("front_right"),
             "motors RL=" + self.motor_status("rear_left")
             + " RR=" + self.motor_status("rear_right")
-            + " armed=" + str(getattr(actuators, "esc_armed", False))
             + " enabled=" + str(ENABLE_THROTTLE),
             "",
             "[Vision]",
@@ -505,8 +503,7 @@ class TuiDashboard:
             + str(THROTTLE_FORWARD_US)
             + "/"
             + str(THROTTLE_REVERSE_US),
-            "esc arm_seconds=" + str(ESC_ARM_SECONDS)
-            + " hard_limit=" + str(THROTTLE_HARD_LIMIT)
+            "esc hard_limit=" + str(THROTTLE_HARD_LIMIT)
             + " min_active=" + str(THROTTLE_MIN_ACTIVE),
             "motor channels FL/FR/RL/RR="
             + str(MOTOR_FRONT_LEFT_CHANNEL)
@@ -857,7 +854,6 @@ class Pca9685Actuators:
     def __init__(self):
         self.enabled = ENABLE_ACTUATORS
         self.last_command = None
-        self.esc_armed = False
         self.last_steering_us = None
         self.last_throttle_us = None
         self.last_motor_values = {}
@@ -889,10 +885,7 @@ class Pca9685Actuators:
         print("  throttle minimum active:", THROTTLE_MIN_ACTIVE)
         print("  motor steering mix:", MOTOR_STEERING_MIX)
         print("  throttle movement enabled:", ENABLE_THROTTLE)
-        print("  holding neutral for ESC arm seconds:", ESC_ARM_SECONDS)
         self.neutralize()
-        time.sleep(ESC_ARM_SECONDS)
-        self.esc_armed = True
 
     def set_pulse_us(self, channel, pulse_us):
         if not self.enabled:

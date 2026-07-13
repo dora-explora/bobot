@@ -1,6 +1,5 @@
 import curses
 import os
-import time
 
 
 STEERING_CHANNEL = int(os.environ.get("STEERING_CHANNEL", "0"))
@@ -25,7 +24,6 @@ STEERING_SERVO_MAX_US = int(os.environ.get("STEERING_SERVO_MAX_US", "2500"))
 THROTTLE_NEUTRAL_US = int(os.environ.get("THROTTLE_NEUTRAL_US", "1500"))
 THROTTLE_FORWARD_US = int(os.environ.get("THROTTLE_FORWARD_US", "1600"))
 THROTTLE_REVERSE_US = int(os.environ.get("THROTTLE_REVERSE_US", "1400"))
-ESC_ARM_SECONDS = float(os.environ.get("ESC_ARM_SECONDS", "3.0"))
 STEERING_STEP = float(os.environ.get("MANUAL_STEERING_STEP", "0.05"))
 THROTTLE_STEP = float(os.environ.get("MANUAL_THROTTLE_STEP", "0.02"))
 
@@ -231,11 +229,9 @@ def draw(screen, steering, throttle, output, message):
 def run(screen, output):
     steering = 0.0
     throttle = 0.0
-    message = "Holding neutral for ESC arm seconds: " + str(ESC_ARM_SECONDS)
+    message = "Ready. Wheels should be off the ground."
     output.neutralize()
     draw(screen, steering, throttle, output, message)
-    time.sleep(ESC_ARM_SECONDS)
-    message = "Ready. Wheels should be off the ground."
     screen.nodelay(True)
 
     while True:
