@@ -4,16 +4,18 @@
 
 1. Detect calibrated multi-colored tennis balls from the Pi camera.
 2. Pick the best visible ball target.
-3. Compute low-speed Ackermann steering and ESC throttle commands.
+3. Compute low-speed tank-drive motor commands from ball steering error.
 4. Keep actuator output disabled by default until hardware is ready.
 
 ## Electronics Assumptions
 
 - Raspberry Pi 5 is the main computer.
 - PCA9685 is connected over I2C.
-- PCA9685 channel 0 drives the steering servo.
-- PCA9685 channel 1 drives the RC ESC throttle input.
-- The Pi, PCA9685, ESC/BEC, servo power, and motor battery must share ground.
+- PCA9685 channel 0 drives the front-left brushless ESC signal.
+- PCA9685 channel 1 drives the front-right brushless ESC signal.
+- PCA9685 channel 2 drives the rear-left brushless ESC signal.
+- PCA9685 channel 3 drives the rear-right brushless ESC signal.
+- The Pi, PCA9685, ESC/BECs, and motor battery must share ground.
 - PCA9685 outputs are PWM control signals only. Do not power DC motors from the PCA9685.
 
 ## Runtime Modes
@@ -44,7 +46,7 @@ Enable real PCA9685 actuator output only after bench testing:
 ENABLE_ACTUATORS=true python3 detector.py
 ```
 
-Run manual PWM control for steering/ESC bench testing:
+Run manual PWM control for four-ESC bench testing:
 
 ```bash
 python3 manual_control.py
@@ -70,11 +72,15 @@ TARGET_SWITCH_FRAMES=3
 TARGET_HOLD_SECONDS=0.35
 TARGET_SMOOTHING=0.35
 STEERING_SLEW_RATE=2.0
-STEERING_LEFT_DEGREES=75
-STEERING_CENTER_DEGREES=105
-STEERING_RIGHT_DEGREES=135
-STEERING_SERVO_MIN_US=500
-STEERING_SERVO_MAX_US=2500
+MOTOR_FRONT_LEFT_CHANNEL=0
+MOTOR_FRONT_RIGHT_CHANNEL=1
+MOTOR_REAR_LEFT_CHANNEL=2
+MOTOR_REAR_RIGHT_CHANNEL=3
+MOTOR_FRONT_LEFT_SIGN=1
+MOTOR_FRONT_RIGHT_SIGN=1
+MOTOR_REAR_LEFT_SIGN=1
+MOTOR_REAR_RIGHT_SIGN=1
+MOTOR_STEERING_MIX=0.08
 THROTTLE_NEUTRAL_US=1500
 THROTTLE_FORWARD_US=1600
 THROTTLE_REVERSE_US=1400
@@ -86,6 +92,8 @@ THROTTLE_ALLOW_REVERSE=false
 MAX_TRIAL_THROTTLE=0.10
 MANUAL_STEERING_STEP=0.05
 MANUAL_THROTTLE_STEP=0.02
+MANUAL_TURN_MIX=0.20
+MANUAL_THROTTLE_LIMIT=1.0
 STEERING_GAIN=1.25
 STEERING_DEADBAND=0.06
 CLOSE_BALL_AREA_RATIO=0.18
@@ -94,12 +102,12 @@ LOST_TARGET_TIMEOUT=0.5
 
 ## Safety Rules
 
-- Test steering and ESC behavior with wheels off the ground first.
+- Test all four ESC channels with wheels off the ground first.
 - Keep `ENABLE_ACTUATORS=false` until PWM ranges are confirmed.
-- For the VXL-3s ESC, start the program before driving and let it hold neutral during `ESC_ARM_SECONDS`.
+- Start the program before driving and let it hold neutral during `ESC_ARM_SECONDS`.
 - Keep `ENABLE_THROTTLE=false` until the car is lifted or restrained; neutral is still sent for ESC arming.
 - `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.
-- Use Ctrl-C to exit; the program neutralizes steering and throttle in its shutdown path.
+- Use Ctrl-C to exit; the program neutralizes all four motor channels in its shutdown path.
 - Add a physical kill switch before any fast or untethered run.
 
 ## Course Roadmap

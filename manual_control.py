@@ -5,6 +5,16 @@ import time
 
 STEERING_CHANNEL = int(os.environ.get("STEERING_CHANNEL", "0"))
 THROTTLE_CHANNEL = int(os.environ.get("THROTTLE_CHANNEL", "1"))
+MOTOR_FRONT_LEFT_CHANNEL = int(os.environ.get("MOTOR_FRONT_LEFT_CHANNEL", "0"))
+MOTOR_FRONT_RIGHT_CHANNEL = int(os.environ.get("MOTOR_FRONT_RIGHT_CHANNEL", "1"))
+MOTOR_REAR_LEFT_CHANNEL = int(os.environ.get("MOTOR_REAR_LEFT_CHANNEL", "2"))
+MOTOR_REAR_RIGHT_CHANNEL = int(os.environ.get("MOTOR_REAR_RIGHT_CHANNEL", "3"))
+MOTOR_FRONT_LEFT_SIGN = float(os.environ.get("MOTOR_FRONT_LEFT_SIGN", "1"))
+MOTOR_FRONT_RIGHT_SIGN = float(os.environ.get("MOTOR_FRONT_RIGHT_SIGN", "1"))
+MOTOR_REAR_LEFT_SIGN = float(os.environ.get("MOTOR_REAR_LEFT_SIGN", "1"))
+MOTOR_REAR_RIGHT_SIGN = float(os.environ.get("MOTOR_REAR_RIGHT_SIGN", "1"))
+MANUAL_TURN_MIX = float(os.environ.get("MANUAL_TURN_MIX", "0.20"))
+MANUAL_THROTTLE_LIMIT = float(os.environ.get("MANUAL_THROTTLE_LIMIT", "1.0"))
 STEERING_CENTER_DEGREES = float(os.environ.get("STEERING_CENTER_DEGREES", "110"))
 STEERING_LEFT_DEGREES = float(os.environ.get("STEERING_LEFT_DEGREES", "50"))
 STEERING_RIGHT_DEGREES = float(os.environ.get("STEERING_RIGHT_DEGREES", "170"))
@@ -18,6 +28,13 @@ THROTTLE_REVERSE_US = int(os.environ.get("THROTTLE_REVERSE_US", "1400"))
 ESC_ARM_SECONDS = float(os.environ.get("ESC_ARM_SECONDS", "3.0"))
 STEERING_STEP = float(os.environ.get("MANUAL_STEERING_STEP", "0.05"))
 THROTTLE_STEP = float(os.environ.get("MANUAL_THROTTLE_STEP", "0.02"))
+
+MOTOR_OUTPUTS = (
+    ("front_left", MOTOR_FRONT_LEFT_CHANNEL, MOTOR_FRONT_LEFT_SIGN),
+    ("front_right", MOTOR_FRONT_RIGHT_CHANNEL, MOTOR_FRONT_RIGHT_SIGN),
+    ("rear_left", MOTOR_REAR_LEFT_CHANNEL, MOTOR_REAR_LEFT_SIGN),
+    ("rear_right", MOTOR_REAR_RIGHT_CHANNEL, MOTOR_REAR_RIGHT_SIGN),
+)
 
 
 def clamp(value, minimum, maximum):
@@ -76,6 +93,20 @@ def normalized_to_throttle_pulse(command):
     )
 
 
+def motor_mix(steering, throttle):
+    throttle = clamp(throttle, -abs(MANUAL_THROTTLE_LIMIT), abs(MANUAL_THROTTLE_LIMIT))
+    turn = clamp(steering, -1.0, 1.0) * abs(MANUAL_TURN_MIX)
+    left = throttle + turn
+    right = throttle - turn
+
+    return {
+        "front_left": clamp(left * MOTOR_FRONT_LEFT_SIGN, -1.0, 1.0),
+        "front_right": clamp(right * MOTOR_FRONT_RIGHT_SIGN, -1.0, 1.0),
+        "rear_left": clamp(left * MOTOR_REAR_LEFT_SIGN, -1.0, 1.0),
+        "rear_right": clamp(right * MOTOR_REAR_RIGHT_SIGN, -1.0, 1.0),
+    }
+
+
 class Pca9685Output:
     def __init__(self):
         import board
@@ -87,18 +118,26 @@ class Pca9685Output:
         self.pca.frequency = 50
         self.last_steering_us = None
         self.last_throttle_us = None
+        self.last_motor_values = {}
+        self.last_motor_pulses_us = {}
 
     def set_pulse_us(self, channel, pulse_us):
         duty_cycle = int(clamp(pulse_us * 50 * 65535 / 1000000, 0, 65535))
         self.pca.channels[channel].duty_cycle = duty_cycle
 
     def apply(self, steering, throttle):
-        steering_us = normalized_to_steering_pulse(steering)
-        throttle_us = normalized_to_throttle_pulse(throttle)
-        self.last_steering_us = steering_us
-        self.last_throttle_us = throttle_us
-        self.set_pulse_us(STEERING_CHANNEL, steering_us)
-        self.set_pulse_us(THROTTLE_CHANNEL, throttle_us)
+        motor_values = motor_mix(steering, throttle)
+        motor_pulses_us = {
+            name: normalized_to_throttle_pulse(value)
+            for name, value in motor_values.items()
+        }
+        self.last_steering_us = None
+        self.last_throttle_us = None
+        self.last_motor_values = motor_values
+        self.last_motor_pulses_us = motor_pulses_us
+
+        for name, channel, _ in MOTOR_OUTPUTS:
+            self.set_pulse_us(channel, motor_pulses_us[name])
 
     def neutralize(self):
         self.apply(0.0, 0.0)
@@ -132,29 +171,40 @@ def throttle_bar(throttle, width):
     return label + "".join(bar) + suffix
 
 
+def motor_status(output, name):
+    value = output.last_motor_values.get(name, 0.0)
+    pulse = output.last_motor_pulses_us.get(name, None)
+    return str(round(value, 3)) + "@" + str(pulse)
+
+
 def draw(screen, steering, throttle, output, message):
     height, width = screen.getmaxyx()
-    steering_degrees = normalized_to_steering_degrees(steering)
     lines = [
-        "Manual PWM Control",
-        "==================",
+        "Manual Four-Motor PWM Control",
+        "=============================",
         "",
         "[Channels]",
-        "steering channel=" + str(STEERING_CHANNEL)
-        + " throttle channel=" + str(THROTTLE_CHANNEL),
-        "steering pulse_us=" + str(output.last_steering_us)
-        + " throttle pulse_us=" + str(output.last_throttle_us),
+        "FL/FR/RL/RR="
+        + str(MOTOR_FRONT_LEFT_CHANNEL)
+        + "/"
+        + str(MOTOR_FRONT_RIGHT_CHANNEL)
+        + "/"
+        + str(MOTOR_REAR_LEFT_CHANNEL)
+        + "/"
+        + str(MOTOR_REAR_RIGHT_CHANNEL),
+        "FL=" + motor_status(output, "front_left")
+        + " FR=" + motor_status(output, "front_right"),
+        "RL=" + motor_status(output, "rear_left")
+        + " RR=" + motor_status(output, "rear_right"),
         "",
-        "[Steering]",
-        "value=" + str(round(steering, 3))
-        + " degrees=" + str(round(steering_degrees, 1))
-        + " L/C/R=" + str(STEERING_LEFT_DEGREES)
-        + "/" + str(STEERING_CENTER_DEGREES)
-        + "/" + str(STEERING_RIGHT_DEGREES),
+        "[Turn Mix]",
+        "steering=" + str(round(steering, 3))
+        + " manual_turn_mix=" + str(MANUAL_TURN_MIX),
         steering_bar(steering, width),
         "",
         "[Throttle]",
         "value=" + str(round(throttle, 3))
+        + " limit=" + str(MANUAL_THROTTLE_LIMIT)
         + " reverse/neutral/forward us="
         + str(THROTTLE_REVERSE_US)
         + "/" + str(THROTTLE_NEUTRAL_US)
@@ -162,9 +212,9 @@ def draw(screen, steering, throttle, output, message):
         throttle_bar(throttle, width),
         "",
         "[Keys]",
-        "A center steering    S full left    D full right",
+        "A center turn        S full left    D full right",
         "J/I throttle +step/full forward    L/M throttle -step/full reverse",
-        "K neutral throttle   W/E steering -/+ step",
+        "K neutral throttle   W/E turn -/+ step",
         "Space all neutral    Q quit",
         "",
         "[Status]",
@@ -208,19 +258,19 @@ def run(screen, output):
             message = "All neutral."
         elif key == "a":
             steering = 0.0
-            message = "Steering centered."
+            message = "Turn centered."
         elif key == "s":
             steering = -1.0
-            message = "Steering full left."
+            message = "Full left tank mix."
         elif key == "d":
             steering = 1.0
-            message = "Steering full right."
+            message = "Full right tank mix."
         elif key == "w":
             steering = clamp(steering - STEERING_STEP, -1.0, 1.0)
-            message = "Steering stepped left."
+            message = "Turn stepped left."
         elif key == "e":
             steering = clamp(steering + STEERING_STEP, -1.0, 1.0)
-            message = "Steering stepped right."
+            message = "Turn stepped right."
         elif key == "i":
             throttle = 1.0
             message = "Throttle full forward."

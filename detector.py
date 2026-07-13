@@ -20,6 +20,15 @@ HEADLESS_REQUEST = os.environ.get("HEADLESS", "auto").lower()
 VALID_HEADLESS_OPTIONS = ("auto", "true", "false")
 STEERING_CHANNEL = int(os.environ.get("STEERING_CHANNEL", "0"))
 THROTTLE_CHANNEL = int(os.environ.get("THROTTLE_CHANNEL", "1"))
+MOTOR_FRONT_LEFT_CHANNEL = int(os.environ.get("MOTOR_FRONT_LEFT_CHANNEL", "0"))
+MOTOR_FRONT_RIGHT_CHANNEL = int(os.environ.get("MOTOR_FRONT_RIGHT_CHANNEL", "1"))
+MOTOR_REAR_LEFT_CHANNEL = int(os.environ.get("MOTOR_REAR_LEFT_CHANNEL", "2"))
+MOTOR_REAR_RIGHT_CHANNEL = int(os.environ.get("MOTOR_REAR_RIGHT_CHANNEL", "3"))
+MOTOR_FRONT_LEFT_SIGN = float(os.environ.get("MOTOR_FRONT_LEFT_SIGN", "1"))
+MOTOR_FRONT_RIGHT_SIGN = float(os.environ.get("MOTOR_FRONT_RIGHT_SIGN", "1"))
+MOTOR_REAR_LEFT_SIGN = float(os.environ.get("MOTOR_REAR_LEFT_SIGN", "1"))
+MOTOR_REAR_RIGHT_SIGN = float(os.environ.get("MOTOR_REAR_RIGHT_SIGN", "1"))
+MOTOR_STEERING_MIX = float(os.environ.get("MOTOR_STEERING_MIX", "0.08"))
 STEERING_CENTER_DEGREES = float(os.environ.get("STEERING_CENTER_DEGREES", "110"))
 STEERING_LEFT_DEGREES = float(os.environ.get("STEERING_LEFT_DEGREES", "50"))
 STEERING_RIGHT_DEGREES = float(os.environ.get("STEERING_RIGHT_DEGREES", "170"))
@@ -277,6 +286,39 @@ def normalized_to_esc_throttle_pulse(command):
     )
 
 
+MOTOR_OUTPUTS = (
+    ("front_left", MOTOR_FRONT_LEFT_CHANNEL, MOTOR_FRONT_LEFT_SIGN),
+    ("front_right", MOTOR_FRONT_RIGHT_CHANNEL, MOTOR_FRONT_RIGHT_SIGN),
+    ("rear_left", MOTOR_REAR_LEFT_CHANNEL, MOTOR_REAR_LEFT_SIGN),
+    ("rear_right", MOTOR_REAR_RIGHT_CHANNEL, MOTOR_REAR_RIGHT_SIGN),
+)
+
+
+def motor_mix_from_drive_command(command):
+    turn = clamp(
+        command.steering,
+        -1.0,
+        1.0
+    ) * min(abs(MOTOR_STEERING_MIX), THROTTLE_HARD_LIMIT)
+    left = command.throttle + turn
+    right = command.throttle - turn
+
+    return {
+        "front_left": left * MOTOR_FRONT_LEFT_SIGN,
+        "front_right": right * MOTOR_FRONT_RIGHT_SIGN,
+        "rear_left": left * MOTOR_REAR_LEFT_SIGN,
+        "rear_right": right * MOTOR_REAR_RIGHT_SIGN,
+    }
+
+
+def motor_pulses_from_drive_command(command):
+    motor_commands = motor_mix_from_drive_command(command)
+    return {
+        name: normalized_to_esc_throttle_pulse(value)
+        for name, value in motor_commands.items()
+    }
+
+
 class TuiDashboard:
     def __init__(self):
         self.enabled = TUI_ENABLED and sys.stdout.isatty()
@@ -398,8 +440,10 @@ class TuiDashboard:
             + " smoothed_steering=" + str(round(debug.smoothed_steering, 3))
             + " slew_limited=" + str(debug.steering_limited),
             self.make_steering_bar(command.steering, terminal_width),
-            "esc safe_throttle=" + str(round(normalize_throttle_for_esc(command.throttle), 3))
-            + " throttle_us=" + str(getattr(actuators, "last_throttle_us", None))
+            "motors FL=" + self.motor_status("front_left")
+            + " FR=" + self.motor_status("front_right"),
+            "motors RL=" + self.motor_status("rear_left")
+            + " RR=" + self.motor_status("rear_right")
             + " armed=" + str(getattr(actuators, "esc_armed", False))
             + " enabled=" + str(ENABLE_THROTTLE),
             "",
@@ -455,12 +499,6 @@ class TuiDashboard:
             "drive gain=" + str(STEERING_GAIN)
             + " deadband=" + str(STEERING_DEADBAND)
             + " max_throttle=" + str(MAX_TRIAL_THROTTLE),
-            "steering degrees L/C/R="
-            + str(STEERING_LEFT_DEGREES)
-            + "/"
-            + str(STEERING_CENTER_DEGREES)
-            + "/"
-            + str(STEERING_RIGHT_DEGREES),
             "esc neutral/forward/reverse us="
             + str(THROTTLE_NEUTRAL_US)
             + "/"
@@ -470,6 +508,15 @@ class TuiDashboard:
             "esc arm_seconds=" + str(ESC_ARM_SECONDS)
             + " hard_limit=" + str(THROTTLE_HARD_LIMIT)
             + " min_active=" + str(THROTTLE_MIN_ACTIVE),
+            "motor channels FL/FR/RL/RR="
+            + str(MOTOR_FRONT_LEFT_CHANNEL)
+            + "/"
+            + str(MOTOR_FRONT_RIGHT_CHANNEL)
+            + "/"
+            + str(MOTOR_REAR_LEFT_CHANNEL)
+            + "/"
+            + str(MOTOR_REAR_RIGHT_CHANNEL)
+            + " steering_mix=" + str(MOTOR_STEERING_MIX),
             "priority weights distance=" + str(TARGET_DISTANCE_WEIGHT)
             + " cluster=" + str(TARGET_CLUSTER_WEIGHT)
             + " area=" + str(TARGET_AREA_WEIGHT)
@@ -496,6 +543,16 @@ class TuiDashboard:
         bar[marker_index] = "#"
 
         return label + "".join(bar) + suffix
+
+    def motor_status(self, name):
+        values = getattr(actuators, "last_motor_values", {})
+        pulses = getattr(actuators, "last_motor_pulses_us", {})
+
+        return (
+            str(round(values.get(name, 0.0), 3))
+            + "@"
+            + str(pulses.get(name, None))
+        )
 
 
 def tui_is_active():
@@ -803,6 +860,8 @@ class Pca9685Actuators:
         self.esc_armed = False
         self.last_steering_us = None
         self.last_throttle_us = None
+        self.last_motor_values = {}
+        self.last_motor_pulses_us = {}
 
         if not self.enabled:
             print("Actuators disabled. Set ENABLE_ACTUATORS=true to drive PCA9685 outputs.")
@@ -822,12 +881,13 @@ class Pca9685Actuators:
         self.pca = PCA9685(i2c)
         self.pca.frequency = 50
         print("PCA9685 actuator output enabled.")
-        print("  steering channel:", STEERING_CHANNEL)
-        print("  steering degrees left/center/right:", STEERING_LEFT_DEGREES, STEERING_CENTER_DEGREES, STEERING_RIGHT_DEGREES)
-        print("  throttle channel:", THROTTLE_CHANNEL)
+        print("  motor channels:")
+        for name, channel, sign in MOTOR_OUTPUTS:
+            print("   ", name, "channel=" + str(channel), "sign=" + str(sign))
         print("  throttle neutral/forward/reverse us:", THROTTLE_NEUTRAL_US, THROTTLE_FORWARD_US, THROTTLE_REVERSE_US)
         print("  throttle hard limit:", THROTTLE_HARD_LIMIT)
         print("  throttle minimum active:", THROTTLE_MIN_ACTIVE)
+        print("  motor steering mix:", MOTOR_STEERING_MIX)
         print("  throttle movement enabled:", ENABLE_THROTTLE)
         print("  holding neutral for ESC arm seconds:", ESC_ARM_SECONDS)
         self.neutralize()
@@ -842,19 +902,31 @@ class Pca9685Actuators:
         self.pca.channels[channel].duty_cycle = duty_cycle
 
     def apply(self, command):
-        steering_us = normalized_to_steering_pulse(command.steering)
-        throttle_us = normalized_to_esc_throttle_pulse(command.throttle)
-        safe_throttle = normalize_throttle_for_esc(command.throttle)
+        motor_values = {
+            name: normalize_throttle_for_esc(value)
+            for name, value in motor_mix_from_drive_command(command).items()
+        }
+        motor_pulses_us = {
+            name: normalized_to_esc_throttle_pulse(value)
+            for name, value in motor_mix_from_drive_command(command).items()
+        }
         command_state = (
             round(command.steering, 3),
-            round(safe_throttle, 3),
+            tuple(
+                (
+                    name,
+                    round(motor_values[name], 3),
+                    motor_pulses_us[name]
+                )
+                for name, _, _ in MOTOR_OUTPUTS
+            ),
             command.mode,
-            command.reason,
-            steering_us,
-            throttle_us
+            command.reason
         )
-        self.last_steering_us = steering_us
-        self.last_throttle_us = throttle_us
+        self.last_steering_us = None
+        self.last_throttle_us = None
+        self.last_motor_values = motor_values
+        self.last_motor_pulses_us = motor_pulses_us
 
         if command_state != self.last_command and ENABLE_ACTUATORS and not tui_is_active():
             print(
@@ -862,15 +934,13 @@ class Pca9685Actuators:
                 "mode=" + command.mode,
                 "steering=" + str(round(command.steering, 3)),
                 "requested_throttle=" + str(round(command.throttle, 3)),
-                "safe_throttle=" + str(round(safe_throttle, 3)),
-                "steering_us=" + str(steering_us),
-                "throttle_us=" + str(throttle_us),
+                "motors=" + str(command_state[1]),
                 "reason=" + command.reason
             )
             self.last_command = command_state
 
-        self.set_pulse_us(STEERING_CHANNEL, steering_us)
-        self.set_pulse_us(THROTTLE_CHANNEL, throttle_us)
+        for name, channel, _ in MOTOR_OUTPUTS:
+            self.set_pulse_us(channel, motor_pulses_us[name])
 
     def neutralize(self):
         self.apply(DriveCommand(0.0, 0.0, "disabled", "neutralize"))
