@@ -23,27 +23,30 @@
 Dry-run vision and command telemetry:
 
 ```bash
-python3 detector.py
+python3 main.py
 ```
+
+`detector.py` remains a compatibility launcher for existing Pi commands, but
+`main.py` is the primary entrypoint from now on.
 
 The terminal dashboard is the main information display. The detector window only shows the camera feed with boxes, dots, and the centerline; it does not show text, and the mask window is disabled.
 
 Disable the terminal dashboard and use plain telemetry prints:
 
 ```bash
-TUI=false python3 detector.py
+TUI=false python3 main.py
 ```
 
 Force headless telemetry:
 
 ```bash
-HEADLESS=true python3 detector.py
+HEADLESS=true python3 main.py
 ```
 
 Enable real PCA9685 actuator output only after bench testing:
 
 ```bash
-ENABLE_ACTUATORS=true python3 detector.py
+ENABLE_ACTUATORS=true python3 main.py
 ```
 
 Run manual PWM control for four-ESC bench testing:
@@ -107,6 +110,20 @@ LOST_TARGET_TIMEOUT=0.5
 - `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.
 - Use Ctrl-C to exit; the program neutralizes all four motor channels in its shutdown path.
 - Add a physical kill switch before any fast or untethered run.
+
+## Runtime Layout
+
+- `main.py` owns camera lifecycle, actuator lifecycle, mission state selection,
+  visualization, and the state-aware TUI dashboard.
+- `robot/ball_detector.py` owns multicolor ball detection and auto-calibration.
+- `robot/cone_slalom.py` owns cone detection and slalom status.
+- `robot/bucket_detection.py`, `robot/rough_section.py`, and
+  `robot/hill_climb.py` isolate their future course behaviors from the trial
+  detector state.
+- `robot/drive.py`, `robot/actuators.py`, `robot/camera.py`, and
+  `robot/dashboard.py` provide shared runtime services.
+- The only enabled mission state is currently `detector`; the TUI visibly shows
+  that state and renders its detector-specific information.
 
 ## Course Roadmap
 
