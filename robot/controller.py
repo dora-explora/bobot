@@ -67,7 +67,8 @@ class ControllerInput:
         for _, other, *_ in candidates:
             if other is not device:
                 other.close()
-        device.set_blocking(False)
+        # evdev InputDevice opens its file descriptor with O_NONBLOCK itself.
+        # Older releases do not expose a set_blocking() convenience method.
         self.device = device
         self.error = ""
         self.disconnected = False
