@@ -55,6 +55,18 @@ Run manual PWM control for four-ESC bench testing:
 python3 manual_control.py
 ```
 
+Install controller input support for the new `manual` state:
+
+```bash
+sudo apt install -y python3-evdev
+```
+
+While running `main.py`, press the controller A button to enter manual tank
+drive. The left and right vertical sticks control the matching motor sides.
+Any non-stick controller input neutralizes every output and exits the runtime.
+Use `CONTROLLER_DEVICE=/dev/input/eventN` if automatic gamepad discovery picks
+the wrong device. The manual TUI temporarily includes raw input diagnostics.
+
 Useful tuning variables:
 
 ```bash
@@ -100,6 +112,14 @@ STEERING_GAIN=1.25
 STEERING_DEADBAND=0.06
 CLOSE_BALL_AREA_RATIO=0.18
 LOST_TARGET_TIMEOUT=0.5
+CONTROLLER_DEVICE=auto
+CONTROLLER_A_BUTTON=304
+CONTROLLER_LEFT_X_AXIS=0
+CONTROLLER_LEFT_Y_AXIS=1
+CONTROLLER_RIGHT_X_AXIS=3
+CONTROLLER_RIGHT_Y_AXIS=4
+CONTROLLER_DEADZONE=0.10
+CONTROLLER_INVERT_Y=true
 ```
 
 ## Safety Rules

@@ -31,6 +31,10 @@ class DriveCommand:
     throttle: float = 0.0
     mode: str = "disabled"
     reason: str = "idle"
+    # Direct side commands are used only by the manual tank-drive state.
+    # When absent, actuator output is derived from steering and throttle.
+    left: float | None = None
+    right: float | None = None
 
 
 @dataclass

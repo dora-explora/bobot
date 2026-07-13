@@ -14,10 +14,11 @@ from robot.ball_detector import BallDetector
 from robot.bucket_detection import BucketDetection
 from robot.camera import open_camera
 from robot.cone_slalom import ConeSlalom
+from robot.controller import ControllerInput
 from robot.dashboard import TuiDashboard
 from robot.drive import DriveStabilizer, TargetStabilizer, ball_seeking_command
 from robot.hill_climb import HillClimb
-from robot.models import StateResult
+from robot.models import DriveCommand, StateResult
 from robot.rough_section import RoughSection
 from robot.vision_common import boxes_nearly_duplicate
 
@@ -56,10 +57,34 @@ class DetectorState:
         return kept
 
 
-# Sections are imported above and kept as independent modules. Only the trial
-# detector state is enabled until the next course behavior is ready for testing.
+class ManualState:
+    """Direct left/right tank drive using the controller's vertical stick axes."""
+
+    name = "manual"
+
+    def __init__(self, controller):
+        self.controller = controller
+
+    def process(self, _frame, _now):
+        left, right = self.controller.tank_sides()
+        return StateResult(
+            command=DriveCommand(
+                steering=max(-1.0, min(1.0, (left - right) / 2.0)),
+                throttle=max(-1.0, min(1.0, (left + right) / 2.0)),
+                mode="manual",
+                reason="controller tank drive",
+                left=left,
+                right=right,
+            ),
+            state_lines=self.controller.debug_lines(),
+        )
+
+
+# Sections are imported above and kept as independent modules. Detector and
+# manual are the only currently runnable states.
 COURSE_SECTIONS = {
     "detector": DetectorState,
+    "manual": ManualState,
     "bucket": BucketDetection,
     "cone_slalom": ConeSlalom,
     "rough_section": RoughSection,
@@ -90,11 +115,18 @@ def print_telemetry(result):
     summary = "target=none" if target is None else "target=" + target.label + " x=" + str(target.center_x) + " y=" + str(target.center_y) + " area=" + str(int(target.area))
     print("Telemetry:", summary, "cones=" + str(debug.cones), "steering=" + str(round(command.steering, 3)),
           "throttle=" + str(round(command.throttle, 3)), "reason=" + command.reason,
+          "left=" + str(None if command.left is None else round(command.left, 3)),
+          "right=" + str(None if command.right is None else round(command.right, 3)),
           "stable=" + debug.stable_target_label, "priority=" + str(round(debug.priority_score, 3)))
 
 
 def run():
-    state = COURSE_SECTIONS[ACTIVE_STATE]()
+    controller = ControllerInput()
+    states = {
+        "detector": DetectorState(),
+        "manual": ManualState(controller),
+    }
+    active_state = ACTIVE_STATE
     dashboard = TuiDashboard()
     camera = None
     actuators = None
@@ -116,9 +148,20 @@ def run():
             if last_frame_time:
                 fps = 1.0 / max(.001, now - last_frame_time)
             last_frame_time = now
+            controller_update = controller.poll(active_state == "manual")
+            if active_state == "detector" and controller_update.start_manual:
+                active_state = "manual"
+                actuators.neutralize()
+                print("Controller A pressed. Entered manual tank-drive mode.")
+            elif active_state == "manual" and controller_update.abort_manual:
+                actuators.neutralize()
+                print("Manual input aborted: " + controller_update.abort_reason + ". Outputs neutralized; exiting.")
+                break
+
+            state = states[active_state]
             result = state.process(frame, now)
             actuators.apply(result.command)
-            dashboard.draw(frame, state.name, result, actuators, now, fps)
+            dashboard.draw(frame, active_state, result, actuators, now, fps)
             if not dashboard.enabled and now - last_telemetry >= config.TELEMETRY_INTERVAL:
                 print_telemetry(result)
                 last_telemetry = now
@@ -134,6 +177,7 @@ def run():
             actuators.close()
         if camera is not None:
             camera.release()
+        controller.close()
         if not config.HEADLESS:
             cv2.destroyAllWindows()
 

@@ -53,29 +53,37 @@ class TuiDashboard:
         target, debug, command = result.best_target, result.debug, result.command
         lines = [
             "Robot Code TUI", "==============", "",
-            "[State]", "active=" + state_name + "  available=detector", "",
+            "[State]", "active=" + state_name + "  available=detector,manual", "",
             "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
             + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
             "actuators=" + str(config.ENABLE_ACTUATORS) + " throttle_enabled=" + str(config.ENABLE_THROTTLE)
             + " ctrl-c=neutralize and exit", "",
-            "[Detector]",
         ]
-        if target is None:
-            lines.extend(["selected=none", "stable=" + debug.stable_target_label + " held=" + str(debug.stable_target_held)
-                          + " raw_targets=" + str(debug.raw_target_count)])
+        if state_name == "manual":
+            lines.extend(["[Manual Controller]", "A enters manual from detector; any non-stick input exits safely."])
+            lines.extend(result.state_lines)
         else:
-            lines.extend(["selected=" + target.label + " x=" + str(target.center_x) + " y=" + str(target.center_y)
-                          + " radius=" + str(target.radius), "area=" + str(int(target.area)) + " confidence=" + str(round(target.confidence, 2)),
-                          "priority score=" + str(round(debug.priority_score, 3)) + " distance=" + str(round(debug.priority_distance, 3))
-                          + " cluster=" + str(round(debug.priority_cluster, 3)) + " neighbors=" + str(debug.priority_neighbors),
-                          "stable=" + debug.stable_target_label + " age=" + str(round(debug.stable_target_age, 2))
-                          + " switch_frames=" + str(debug.switch_candidate_frames)])
+            lines.append("[Detector]")
+            if target is None:
+                lines.extend(["selected=none", "stable=" + debug.stable_target_label + " held=" + str(debug.stable_target_held)
+                              + " raw_targets=" + str(debug.raw_target_count)])
+            else:
+                lines.extend(["selected=" + target.label + " x=" + str(target.center_x) + " y=" + str(target.center_y)
+                              + " radius=" + str(target.radius), "area=" + str(int(target.area)) + " confidence=" + str(round(target.confidence, 2)),
+                              "priority score=" + str(round(debug.priority_score, 3)) + " distance=" + str(round(debug.priority_distance, 3))
+                              + " cluster=" + str(round(debug.priority_cluster, 3)) + " neighbors=" + str(debug.priority_neighbors),
+                              "stable=" + debug.stable_target_label + " age=" + str(round(debug.stable_target_age, 2))
+                              + " switch_frames=" + str(debug.switch_candidate_frames)])
         lines.extend(["", "[Drive]", "mode=" + command.mode + " steering=" + str(round(command.steering, 3))
                       + " throttle=" + str(round(command.throttle, 3)), "reason=" + command.reason,
                       "raw=" + str(round(debug.raw_steering, 3)) + " smoothed=" + str(round(debug.smoothed_steering, 3))
                       + " slew_limited=" + str(debug.steering_limited), self._steering_bar(command.steering, width),
-                      self._motors(actuators), "", "[Cone Slalom]"])
-        lines.extend(result.state_lines)
+                      self._motors(actuators)])
+        if state_name != "manual":
+            lines.extend(["", "[Cone Slalom]"])
+            lines.extend(result.state_lines)
+        if state_name == "manual":
+            return lines
         lines.extend(["", "[Vision]", "colors=" + str(debug.active_colors) + " masks=" + str(debug.masks_checked)
                       + " contours=" + str(debug.contours_seen) + " balls=" + str(debug.accepted) + " cones=" + str(debug.cones),
                       "reject small=" + str(debug.rejected_small) + " large=" + str(debug.rejected_large)

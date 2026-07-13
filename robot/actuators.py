@@ -23,6 +23,15 @@ def throttle_pulse(command):
 
 
 def motor_mix(command):
+    if command.left is not None and command.right is not None:
+        requested = {
+            "front_left": command.left,
+            "front_right": command.right,
+            "rear_left": command.left,
+            "rear_right": command.right,
+        }
+        return {name: requested[name] * sign for name, _, sign in config.MOTOR_OUTPUTS}
+
     turn = clamp(command.steering, -1.0, 1.0) * min(abs(config.MOTOR_STEERING_MIX), config.THROTTLE_HARD_LIMIT)
     left, right = command.throttle + turn, command.throttle - turn
     requested = {"front_left": left, "front_right": right, "rear_left": left, "rear_right": right}
