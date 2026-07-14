@@ -1,5 +1,6 @@
 import curses
 import os
+import time
 
 
 STEERING_CHANNEL = int(os.environ.get("STEERING_CHANNEL", "0"))
@@ -33,6 +34,26 @@ MOTOR_OUTPUTS = (
     ("rear_left", MOTOR_REAR_LEFT_CHANNEL, MOTOR_REAR_LEFT_SIGN),
     ("rear_right", MOTOR_REAR_RIGHT_CHANNEL, MOTOR_REAR_RIGHT_SIGN),
 )
+
+
+def pulse_triplet(name, fallback):
+    raw_value = os.environ.get(name, ",".join(str(value) for value in fallback))
+    try:
+        values = tuple(int(value.strip()) for value in raw_value.split(","))
+    except ValueError as error:
+        raise ValueError(name + " must be reverse,neutral,forward microseconds") from error
+    if len(values) != 3 or any(value <= 0 for value in values):
+        raise ValueError(name + " must contain three positive values: reverse,neutral,forward")
+    return values
+
+
+SHARED_ESC_US = (THROTTLE_REVERSE_US, THROTTLE_NEUTRAL_US, THROTTLE_FORWARD_US)
+MOTOR_ESC_US = {
+    "front_left": pulse_triplet("MOTOR_FRONT_LEFT_ESC_US", SHARED_ESC_US),
+    "front_right": pulse_triplet("MOTOR_FRONT_RIGHT_ESC_US", SHARED_ESC_US),
+    "rear_left": pulse_triplet("MOTOR_REAR_LEFT_ESC_US", SHARED_ESC_US),
+    "rear_right": pulse_triplet("MOTOR_REAR_RIGHT_ESC_US", SHARED_ESC_US),
+}
 
 
 def clamp(value, minimum, maximum):
@@ -82,12 +103,13 @@ def normalized_to_steering_pulse(command):
     return steering_degrees_to_pulse_us(normalized_to_steering_degrees(command))
 
 
-def normalized_to_throttle_pulse(command):
+def normalized_to_throttle_pulse(command, esc_us):
+    reverse_us, neutral_us, forward_us = esc_us
     return normalized_to_pulse(
         clamp(command, -1.0, 1.0),
-        THROTTLE_REVERSE_US,
-        THROTTLE_NEUTRAL_US,
-        THROTTLE_FORWARD_US
+        reverse_us,
+        neutral_us,
+        forward_us
     )
 
 
@@ -126,7 +148,7 @@ class Pca9685Output:
     def apply(self, steering, throttle):
         motor_values = motor_mix(steering, throttle)
         motor_pulses_us = {
-            name: normalized_to_throttle_pulse(value)
+            name: normalized_to_throttle_pulse(value, MOTOR_ESC_US[name])
             for name, value in motor_values.items()
         }
         self.last_steering_us = None
@@ -201,12 +223,11 @@ def draw(screen, steering, throttle, output, message):
         steering_bar(steering, width),
         "",
         "[Throttle]",
-        "value=" + str(round(throttle, 3))
-        + " limit=" + str(MANUAL_THROTTLE_LIMIT)
-        + " reverse/neutral/forward us="
-        + str(THROTTLE_REVERSE_US)
-        + "/" + str(THROTTLE_NEUTRAL_US)
-        + "/" + str(THROTTLE_FORWARD_US),
+        "value=" + str(round(throttle, 3)) + " limit=" + str(MANUAL_THROTTLE_LIMIT),
+        "ESC us FL/FR/RL/RR=" + " ".join(
+            name + "=" + "/".join(str(value) for value in MOTOR_ESC_US[name])
+            for name in ("front_left", "front_right", "rear_left", "rear_right")
+        ),
         throttle_bar(throttle, width),
         "",
         "[Keys]",

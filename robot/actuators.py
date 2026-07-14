@@ -18,8 +18,9 @@ def normalize_throttle(command):
     return max(command, -config.THROTTLE_HARD_LIMIT) if command < 0 and config.THROTTLE_ALLOW_REVERSE else 0.0
 
 
-def throttle_pulse(command):
-    return normalized_to_pulse(normalize_throttle(command), config.THROTTLE_REVERSE_US, config.THROTTLE_NEUTRAL_US, config.THROTTLE_FORWARD_US)
+def throttle_pulse(command, esc_us):
+    reverse_us, neutral_us, forward_us = esc_us
+    return normalized_to_pulse(normalize_throttle(command), reverse_us, neutral_us, forward_us)
 
 
 def motor_mix(command):
@@ -56,12 +57,19 @@ class Pca9685Actuators:
         self.pca = PCA9685(busio.I2C(board.SCL, board.SDA))
         self.pca.frequency = 50
         print("PCA9685 enabled on channels " + ", ".join(name + "=" + str(channel) for name, channel, _ in config.MOTOR_OUTPUTS))
+        print("ESC reverse/neutral/forward us: " + ", ".join(
+            name + "=" + "/".join(str(value) for value in config.MOTOR_ESC_US[name])
+            for name, _, _ in config.MOTOR_OUTPUTS
+        ))
         self.neutralize()
 
     def apply(self, command):
         requested = motor_mix(command)
         self.last_motor_values = {name: normalize_throttle(value) for name, value in requested.items()}
-        self.last_motor_pulses_us = {name: throttle_pulse(value) for name, value in requested.items()}
+        self.last_motor_pulses_us = {
+            name: throttle_pulse(value, config.MOTOR_ESC_US[name])
+            for name, value in requested.items()
+        }
         if self.enabled:
             for name, channel, _ in config.MOTOR_OUTPUTS:
                 self._set_pulse(channel, self.last_motor_pulses_us[name])

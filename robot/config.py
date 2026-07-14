@@ -16,6 +16,18 @@ def env_int(name, default):
     return int(os.environ.get(name, default))
 
 
+def env_pulse_triplet(name, fallback):
+    """Read reverse,neutral,forward microseconds from one compact envvar."""
+    raw_value = os.environ.get(name, ",".join(str(value) for value in fallback))
+    try:
+        values = tuple(int(value.strip()) for value in raw_value.split(","))
+    except ValueError as error:
+        raise ValueError(name + " must be reverse,neutral,forward microseconds") from error
+    if len(values) != 3 or any(value <= 0 for value in values):
+        raise ValueError(name + " must contain three positive values: reverse,neutral,forward")
+    return values
+
+
 FRAME_WIDTH = env_int("FRAME_WIDTH", "640")
 FRAME_HEIGHT = env_int("FRAME_HEIGHT", "480")
 CAMERA_BACKEND = os.environ.get("CAMERA_BACKEND", "auto").lower()
@@ -44,6 +56,13 @@ MOTOR_OUTPUTS = (
     ("rear_left", env_int("MOTOR_REAR_LEFT_CHANNEL", "2"), env_float("MOTOR_REAR_LEFT_SIGN", "1")),
     ("rear_right", env_int("MOTOR_REAR_RIGHT_CHANNEL", "3"), env_float("MOTOR_REAR_RIGHT_SIGN", "1")),
 )
+SHARED_ESC_US = (THROTTLE_REVERSE_US, THROTTLE_NEUTRAL_US, THROTTLE_FORWARD_US)
+MOTOR_ESC_US = {
+    "front_left": env_pulse_triplet("MOTOR_FRONT_LEFT_ESC_US", SHARED_ESC_US),
+    "front_right": env_pulse_triplet("MOTOR_FRONT_RIGHT_ESC_US", SHARED_ESC_US),
+    "rear_left": env_pulse_triplet("MOTOR_REAR_LEFT_ESC_US", SHARED_ESC_US),
+    "rear_right": env_pulse_triplet("MOTOR_REAR_RIGHT_ESC_US", SHARED_ESC_US),
+}
 
 TUI_ENABLED = env_bool("TUI", "true")
 TUI_INTERVAL = env_float("TUI_INTERVAL", "0.10")
