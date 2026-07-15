@@ -1,3 +1,13 @@
+"""PCA9685 output with an independent process watchdog.
+
+The PCA9685 latches its last PWM duty cycle. Keeping hardware ownership in a
+separate process lets that process return the ESCs to neutral if camera or
+vision code blocks, raises, or terminates unexpectedly.
+"""
+import multiprocessing
+import time
+import traceback
+
 from robot import config
 from robot.models import DriveCommand
 from robot.vision_common import clamp
@@ -39,24 +49,160 @@ def motor_mix(command):
     return {name: requested[name] * sign for name, _, sign in config.MOTOR_OUTPUTS}
 
 
+def _duty_cycle_for_pulse(pulse_us):
+    return int(clamp(pulse_us * 50 * 65535 / 1000000, 0, 65535))
+
+
+def _write_watchdog_error(error_report, fatal_error_log):
+    try:
+        with open(fatal_error_log, "a", encoding="utf-8") as log_file:
+            log_file.write("PCA9685 WATCHDOG ERROR\n" + error_report + "\n")
+    except OSError:
+        pass
+
+
+def _pca9685_watchdog_worker(connection, motor_outputs, neutral_pulses, watchdog_seconds, fatal_error_log):
+    """Own the I2C device and fail to neutral when parent heartbeats stop."""
+    pca = None
+
+    def write_pulses(pulses):
+        for name, channel, _ in motor_outputs:
+            pca.channels[channel].duty_cycle = _duty_cycle_for_pulse(pulses[name])
+
+    try:
+        import board
+        import busio
+        from adafruit_pca9685 import PCA9685
+
+        pca = PCA9685(busio.I2C(board.SCL, board.SDA))
+        pca.frequency = 50
+        write_pulses(neutral_pulses)
+        connection.send(("ready", ""))
+        last_heartbeat = time.monotonic()
+
+        while True:
+            wait_seconds = max(0.01, watchdog_seconds - (time.monotonic() - last_heartbeat))
+            if not connection.poll(wait_seconds):
+                write_pulses(neutral_pulses)
+                last_heartbeat = time.monotonic()
+                continue
+
+            message, payload = connection.recv()
+            if message == "pulses":
+                write_pulses(payload)
+                last_heartbeat = time.monotonic()
+            elif message == "shutdown":
+                write_pulses(neutral_pulses)
+                break
+    except BaseException:
+        error_report = traceback.format_exc()
+        _write_watchdog_error(error_report, fatal_error_log)
+        try:
+            connection.send(("fatal", error_report))
+        except (BrokenPipeError, EOFError, OSError):
+            pass
+    finally:
+        if pca is not None:
+            try:
+                write_pulses(neutral_pulses)
+            except BaseException:
+                pass
+            try:
+                pca.deinit()
+            except BaseException:
+                pass
+        try:
+            connection.close()
+        except BaseException:
+            pass
+
+
+class Pca9685Watchdog:
+    """Parent-side interface for watchdog-owned PCA9685 output."""
+
+    def __init__(self, motor_outputs, neutral_pulses, watchdog_seconds, startup_timeout_seconds):
+        if watchdog_seconds <= 0:
+            raise ValueError("ACTUATOR_WATCHDOG_SECONDS must be greater than zero")
+        self.connection, worker_connection = multiprocessing.get_context("spawn").Pipe()
+        self.process = multiprocessing.get_context("spawn").Process(
+            target=_pca9685_watchdog_worker,
+            args=(worker_connection, motor_outputs, neutral_pulses, watchdog_seconds, config.FATAL_ERROR_LOG),
+            name="pca9685-watchdog",
+            daemon=False,
+        )
+        self.neutral_pulses = neutral_pulses
+        self.closed = False
+        self.process.start()
+        worker_connection.close()
+        if not self.connection.poll(startup_timeout_seconds):
+            self._terminate_worker()
+            raise RuntimeError("PCA9685 watchdog did not become ready before timeout")
+        status, detail = self.connection.recv()
+        if status != "ready":
+            self._terminate_worker()
+            raise RuntimeError("PCA9685 watchdog startup failed:\n" + detail)
+
+    def apply_pulses(self, pulses):
+        self._check_health()
+        try:
+            self.connection.send(("pulses", pulses))
+        except (BrokenPipeError, EOFError, OSError) as error:
+            raise RuntimeError("PCA9685 watchdog connection failed: " + str(error)) from error
+
+    def neutralize(self):
+        self.apply_pulses(self.neutral_pulses)
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            if self.process.is_alive():
+                self.connection.send(("shutdown", None))
+                self.process.join(1.0)
+        except (BrokenPipeError, EOFError, OSError):
+            pass
+        finally:
+            if self.process.is_alive():
+                self._terminate_worker()
+            self.connection.close()
+
+    def _check_health(self):
+        if self.connection.poll():
+            status, detail = self.connection.recv()
+            if status == "fatal":
+                raise RuntimeError("PCA9685 watchdog failed:\n" + detail)
+        if not self.process.is_alive():
+            raise RuntimeError("PCA9685 watchdog stopped unexpectedly")
+
+    def _terminate_worker(self):
+        if self.process.is_alive():
+            self.process.terminate()
+            self.process.join(1.0)
+
+
 class Pca9685Actuators:
     def __init__(self):
         self.enabled = config.ENABLE_ACTUATORS
         self.last_motor_values = {}
         self.last_motor_pulses_us = {}
+        self.watchdog = None
         if not self.enabled:
             print("Actuators disabled. Set ENABLE_ACTUATORS=true to use PCA9685 outputs.")
             return
-        try:
-            import board
-            import busio
-            from adafruit_pca9685 import PCA9685
-        except ImportError:
-            print("PCA9685 libraries are missing. Install adafruit-blinka and adafruit-circuitpython-pca9685.")
-            raise
-        self.pca = PCA9685(busio.I2C(board.SCL, board.SDA))
-        self.pca.frequency = 50
-        print("PCA9685 enabled on channels " + ", ".join(name + "=" + str(channel) for name, channel, _ in config.MOTOR_OUTPUTS))
+
+        neutral_pulses = {
+            name: config.MOTOR_ESC_US[name][1]
+            for name, _, _ in config.MOTOR_OUTPUTS
+        }
+        self.watchdog = Pca9685Watchdog(
+            config.MOTOR_OUTPUTS,
+            neutral_pulses,
+            config.ACTUATOR_WATCHDOG_SECONDS,
+            config.ACTUATOR_STARTUP_TIMEOUT_SECONDS,
+        )
+        print("PCA9685 watchdog enabled on channels " + ", ".join(name + "=" + str(channel) for name, channel, _ in config.MOTOR_OUTPUTS))
+        print("Actuator watchdog timeout: " + str(config.ACTUATOR_WATCHDOG_SECONDS) + " seconds")
         print("ESC reverse/neutral/forward us: " + ", ".join(
             name + "=" + "/".join(str(value) for value in config.MOTOR_ESC_US[name])
             for name, _, _ in config.MOTOR_OUTPUTS
@@ -71,17 +217,15 @@ class Pca9685Actuators:
             for name, value in requested.items()
         }
         if self.enabled:
-            for name, channel, _ in config.MOTOR_OUTPUTS:
-                self._set_pulse(channel, self.last_motor_pulses_us[name])
-
-    def _set_pulse(self, channel, pulse_us):
-        duty = int(clamp(pulse_us * 50 * 65535 / 1000000, 0, 65535))
-        self.pca.channels[channel].duty_cycle = duty
+            self.watchdog.apply_pulses(self.last_motor_pulses_us)
 
     def neutralize(self):
         self.apply(DriveCommand(reason="neutralize"))
 
     def close(self):
-        self.neutralize()
-        if self.enabled:
-            self.pca.deinit()
+        try:
+            if self.enabled:
+                self.neutralize()
+        finally:
+            if self.watchdog is not None:
+                self.watchdog.close()

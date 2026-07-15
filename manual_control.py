@@ -2,6 +2,8 @@ import curses
 import os
 import time
 
+from robot.actuators import Pca9685Watchdog
+
 
 STEERING_CHANNEL = int(os.environ.get("STEERING_CHANNEL", "0"))
 THROTTLE_CHANNEL = int(os.environ.get("THROTTLE_CHANNEL", "1"))
@@ -27,6 +29,8 @@ THROTTLE_FORWARD_US = int(os.environ.get("THROTTLE_FORWARD_US", "1600"))
 THROTTLE_REVERSE_US = int(os.environ.get("THROTTLE_REVERSE_US", "1400"))
 STEERING_STEP = float(os.environ.get("MANUAL_STEERING_STEP", "0.05"))
 THROTTLE_STEP = float(os.environ.get("MANUAL_THROTTLE_STEP", "0.02"))
+ACTUATOR_WATCHDOG_SECONDS = float(os.environ.get("ACTUATOR_WATCHDOG_SECONDS", "0.25"))
+ACTUATOR_STARTUP_TIMEOUT_SECONDS = float(os.environ.get("ACTUATOR_STARTUP_TIMEOUT_SECONDS", "3.0"))
 
 MOTOR_OUTPUTS = (
     ("front_left", MOTOR_FRONT_LEFT_CHANNEL, MOTOR_FRONT_LEFT_SIGN),
@@ -129,21 +133,20 @@ def motor_mix(steering, throttle):
 
 class Pca9685Output:
     def __init__(self):
-        import board
-        import busio
-        from adafruit_pca9685 import PCA9685
-
-        i2c = busio.I2C(board.SCL, board.SDA)
-        self.pca = PCA9685(i2c)
-        self.pca.frequency = 50
         self.last_steering_us = None
         self.last_throttle_us = None
         self.last_motor_values = {}
         self.last_motor_pulses_us = {}
-
-    def set_pulse_us(self, channel, pulse_us):
-        duty_cycle = int(clamp(pulse_us * 50 * 65535 / 1000000, 0, 65535))
-        self.pca.channels[channel].duty_cycle = duty_cycle
+        neutral_pulses = {
+            name: MOTOR_ESC_US[name][1]
+            for name, _, _ in MOTOR_OUTPUTS
+        }
+        self.watchdog = Pca9685Watchdog(
+            MOTOR_OUTPUTS,
+            neutral_pulses,
+            ACTUATOR_WATCHDOG_SECONDS,
+            ACTUATOR_STARTUP_TIMEOUT_SECONDS,
+        )
 
     def apply(self, steering, throttle):
         motor_values = motor_mix(steering, throttle)
@@ -156,15 +159,16 @@ class Pca9685Output:
         self.last_motor_values = motor_values
         self.last_motor_pulses_us = motor_pulses_us
 
-        for name, channel, _ in MOTOR_OUTPUTS:
-            self.set_pulse_us(channel, motor_pulses_us[name])
+        self.watchdog.apply_pulses(motor_pulses_us)
 
     def neutralize(self):
         self.apply(0.0, 0.0)
 
     def close(self):
-        self.neutralize()
-        self.pca.deinit()
+        try:
+            self.neutralize()
+        finally:
+            self.watchdog.close()
 
 
 def steering_bar(steering, width):

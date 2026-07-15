@@ -107,6 +107,9 @@ MOTOR_FRONT_LEFT_ESC_US=1400,1500,1600
 MOTOR_FRONT_RIGHT_ESC_US=1400,1500,1600
 MOTOR_REAR_LEFT_ESC_US=1400,1500,1600
 MOTOR_REAR_RIGHT_ESC_US=1400,1500,1600
+ACTUATOR_WATCHDOG_SECONDS=0.25
+ACTUATOR_STARTUP_TIMEOUT_SECONDS=3.0
+FATAL_ERROR_LOG=/tmp/bobot-fatal.log
 ENABLE_THROTTLE=false
 THROTTLE_HARD_LIMIT=0.12
 THROTTLE_MIN_ACTIVE=0.06
@@ -143,6 +146,13 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 - `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.
 - Use Ctrl-C to exit; the program neutralizes all four motor channels in its shutdown path.
 - Add a physical kill switch before any fast or untethered run.
+- PCA9685 output is owned by a separate watchdog process. It receives a fresh
+  command every control frame and writes all four calibrated neutral pulses
+  after `ACTUATOR_WATCHDOG_SECONDS` without one. This covers a hung or crashed
+  camera/control process, including one that can no longer read controller input.
+- The watchdog does not cover I2C bus lockup, PCA9685 failure, or Pi/OS power
+  failure. A physical e-stop or power/signal gate that disables ESC output is
+  still mandatory before anyone is near the moving vehicle.
 
 ## Runtime Layout
 

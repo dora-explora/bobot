@@ -4,6 +4,8 @@
 here and in the state-specific modules under `robot/`.
 """
 import time
+import sys
+import traceback
 
 import cv2
 import numpy as np
@@ -120,6 +122,53 @@ def print_telemetry(result):
           "stable=" + debug.stable_target_label, "priority=" + str(round(debug.priority_score, 3)))
 
 
+def report_fatal_error(error):
+    report = (
+        "FATAL ROBOT RUNTIME ERROR\n"
+        + time.strftime("%Y-%m-%d %H:%M:%S %z")
+        + "\n"
+        + "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    )
+    print(report, file=sys.stderr, flush=True)
+    try:
+        with open(config.FATAL_ERROR_LOG, "a", encoding="utf-8") as log_file:
+            log_file.write(report + "\n")
+    except OSError as log_error:
+        print("Could not write fatal error log: " + str(log_error), file=sys.stderr, flush=True)
+
+
+def safe_shutdown(actuators, camera, controller, dashboard):
+    """Neutralize first; no cleanup error may prevent the remaining cleanup."""
+    if actuators is not None:
+        try:
+            actuators.neutralize()
+        except BaseException as error:
+            print("Emergency neutralize failed: " + repr(error), file=sys.stderr, flush=True)
+        try:
+            actuators.close()
+        except BaseException as error:
+            print("Actuator watchdog shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+    if controller is not None:
+        try:
+            controller.close()
+        except BaseException as error:
+            print("Controller shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+    if camera is not None:
+        try:
+            camera.release()
+        except BaseException as error:
+            print("Camera shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+    try:
+        dashboard.close()
+    except BaseException as error:
+        print("TUI shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+    if not config.HEADLESS:
+        try:
+            cv2.destroyAllWindows()
+        except BaseException as error:
+            print("Display shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+
+
 def run():
     controller = ControllerInput()
     states = {
@@ -146,8 +195,7 @@ def run():
         while True:
             ok, frame = camera.read()
             if not ok:
-                print("Camera frame read failed; neutralizing outputs.")
-                break
+                raise RuntimeError("Camera frame read failed")
             now = time.time()
             if last_frame_time:
                 fps = 1.0 / max(.001, now - last_frame_time)
@@ -175,15 +223,10 @@ def run():
                 cv2.waitKey(1)  # Required only to keep the visualization responsive; input is ignored.
     except KeyboardInterrupt:
         print("Keyboard interrupt received. Neutralizing outputs and exiting.")
+    except BaseException as error:
+        report_fatal_error(error)
     finally:
-        dashboard.close()
-        if actuators is not None:
-            actuators.close()
-        if camera is not None:
-            camera.release()
-        controller.close()
-        if not config.HEADLESS:
-            cv2.destroyAllWindows()
+        safe_shutdown(actuators, camera, controller, dashboard)
 
 
 if __name__ == "__main__":
