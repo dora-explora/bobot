@@ -15,7 +15,10 @@ class Picamera2Camera:
         self.camera.configure(self.camera.create_preview_configuration(main={"size": (width, height), "format": "BGR888"}))
         self.camera.start()
         self.frame_count = 0
-        print("Picamera2 started: " + str(width) + "x" + str(height) + " BGR888")
+        print(
+            "Picamera2 started: " + str(width) + "x" + str(height)
+            + " BGR888 flip_180=" + str(config.PICAMERA2_FLIP_180)
+        )
 
     def read(self):
         try:
@@ -28,7 +31,11 @@ class Picamera2Camera:
             return False, None
         self.frame_count += 1
         frame = frame[:, :, :3]
-        return True, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) if config.PICAMERA2_SWAP_RED_BLUE else frame
+        if config.PICAMERA2_SWAP_RED_BLUE:
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        if config.PICAMERA2_FLIP_180:
+            frame = cv2.flip(frame, -1)
+        return True, frame
 
     def release(self):
         self.camera.stop()

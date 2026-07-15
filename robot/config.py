@@ -32,6 +32,7 @@ FRAME_WIDTH = env_int("FRAME_WIDTH", "640")
 FRAME_HEIGHT = env_int("FRAME_HEIGHT", "480")
 CAMERA_BACKEND = os.environ.get("CAMERA_BACKEND", "auto").lower()
 PICAMERA2_SWAP_RED_BLUE = env_bool("PICAMERA2_SWAP_RED_BLUE", "true")
+PICAMERA2_FLIP_180 = env_bool("PICAMERA2_FLIP_180", "true")
 HEADLESS_REQUEST = os.environ.get("HEADLESS", "auto").lower()
 HEADLESS = (
     HEADLESS_REQUEST == "true"
