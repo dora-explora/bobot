@@ -143,7 +143,8 @@ class BallDetector:
                 if area <= minimum:
                     debug.rejected_small += 1
                     continue
-                if area >= frame_area * config.MAX_BALL_AREA_RATIO:
+                maximum = self.maximum_area(center_y, hsv.shape[0], frame_area)
+                if area >= maximum:
                     debug.rejected_large += 1
                     continue
                 if not is_spherical(contour, width, height, mask):
@@ -162,6 +163,13 @@ class BallDetector:
         y_ratio = clamp(center_y / float(max(1, frame_height)), 0.0, 1.0)
         scale = clamp(config.MIN_BALL_AREA_TOP_SCALE, 0.0, 1.0)
         return frame_area * config.MIN_BALL_AREA_RATIO * (scale + (1.0 - scale) * y_ratio)
+
+    @staticmethod
+    def maximum_area(center_y, frame_height, frame_area):
+        """Allow larger candidates lower in the image than in the distance."""
+        y_ratio = clamp(center_y / float(max(1, frame_height)), 0.0, 1.0)
+        scale = clamp(config.MAX_BALL_AREA_TOP_SCALE, 0.0, 1.0)
+        return frame_area * config.MAX_BALL_AREA_RATIO * (scale + (1.0 - scale) * y_ratio)
 
     @staticmethod
     def _cull_duplicates(targets):

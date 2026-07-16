@@ -92,7 +92,7 @@ class TuiDashboard:
                       "auto candidates=" + str(debug.auto_candidates) + " profiles=" + str(debug.auto_profiles)
                       + " names=" + (", ".join(result.auto_color_names) or "none"), "",
                       "[Tuning]", "ball area min=" + str(config.MIN_BALL_AREA_RATIO) + " top_scale=" + str(config.MIN_BALL_AREA_TOP_SCALE)
-                      + " max=" + str(config.MAX_BALL_AREA_RATIO),
+                      + " max=" + str(config.MAX_BALL_AREA_RATIO) + " max_top_scale=" + str(config.MAX_BALL_AREA_TOP_SCALE),
                       "shape circularity=" + str(config.MIN_BALL_CIRCULARITY) + " fill=" + str(config.MIN_BALL_CIRCLE_FILL)
                       + " triangle_epsilon=" + str(config.TRIANGLE_APPROX_EPSILON),
                       "cone hsv=" + str(config.CONE_HUE_MIN) + "-" + str(config.CONE_HUE_MAX)
