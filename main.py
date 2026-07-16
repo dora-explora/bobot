@@ -20,6 +20,7 @@ from robot.controller import ControllerInput
 from robot.dashboard import TuiDashboard
 from robot.drive import DriveStabilizer, TargetStabilizer, ball_seeking_command
 from robot.hill_climb import HillClimb
+from robot.mode_control import ModeControl
 from robot.models import DriveCommand, StateResult
 from robot.rough_section import RoughSection
 from robot.vision_common import boxes_nearly_duplicate
@@ -98,17 +99,15 @@ class StaticState:
 
     def process(self, _frame, _now):
         return StateResult(
-            command=DriveCommand(mode="static", reason="waiting for throttle enable"),
+            command=DriveCommand(mode="static", reason="static mode"),
             state_lines=self.controller.debug_lines() + [
-                "throttle is neutral; press enable button "
-                + str(config.CONTROLLER_THROTTLE_ENABLE_BUTTON)
-                + " to enter manual mode",
+                "motors neutral; A=manual Y=radial menu B=remain static",
             ],
         )
 
 
 # Sections are imported above and kept as independent modules. Static is the
-# default safety state; manual is enabled only by the configured controller key.
+# default safety state; the controller mode coordinator gates physical output.
 COURSE_SECTIONS = {
     "static": StaticState,
     "detector": DetectorState,
@@ -137,12 +136,14 @@ def draw_overlay(frame, result):
         cv2.drawMarker(frame, (cone.center_x, cone.center_y), cone.color, markerType=cv2.MARKER_TILTED_CROSS, markerSize=12, thickness=2)
 
 
-def print_telemetry(result):
+def print_telemetry(result, mode_control, output_command):
     target = result.best_target
     debug, command = result.debug, result.command
     summary = "target=none" if target is None else "target=" + target.label + " x=" + str(target.center_x) + " y=" + str(target.center_y) + " area=" + str(int(target.area))
     print("Telemetry:", summary, "cones=" + str(debug.cones), "steering=" + str(round(command.steering, 3)),
           "throttle=" + str(round(command.throttle, 3)), "reason=" + command.reason,
+          "state=" + mode_control.active_state, "menu=" + str(mode_control.menu_active),
+          "output_mode=" + output_command.mode, "output_reason=" + output_command.reason,
           "left=" + str(None if command.left is None else round(command.left, 3)),
           "right=" + str(None if command.right is None else round(command.right, 3)),
           "stable=" + debug.stable_target_label, "priority=" + str(round(debug.priority_score, 3)))
@@ -202,11 +203,7 @@ def run():
         "detector": DetectorState(),
         "manual": ManualState(controller),
     }
-    if ACTIVE_STATE not in states:
-        raise ValueError(
-            "ROBOT_START_STATE must be one of: " + ", ".join(sorted(states))
-        )
-    active_state = ACTIVE_STATE
+    mode_control = ModeControl(ACTIVE_STATE)
     dashboard = TuiDashboard()
     camera = None
     actuators = None
@@ -227,22 +224,27 @@ def run():
             if last_frame_time:
                 fps = 1.0 / max(.001, now - last_frame_time)
             last_frame_time = now
-            controller_update = controller.poll(active_state == "manual")
-            if controller_update.abort_manual:
-                actuators.neutralize()
-                active_state = "static"
-                print("Controller stop: " + controller_update.abort_reason + ". Outputs neutralized; entered static mode.")
-            if active_state != "manual" and controller_update.enable_throttle:
-                active_state = "manual"
-                actuators.neutralize()
-                print("Throttle enable pressed. Entered manual tank-drive mode.")
+            controller_update = controller.poll()
+            decision = mode_control.update(controller_update, controller.right_stick())
+            if decision.message and not dashboard.enabled:
+                print("Controller: " + decision.message)
 
-            state = states[active_state]
+            state = states[mode_control.active_state]
             result = state.process(frame, now)
-            actuators.apply(result.command)
-            dashboard.draw(frame, active_state, result, actuators, now, fps)
+            output_command = mode_control.gate_command(result.command, decision.neutralize_this_frame)
+            actuators.apply(output_command)
+            dashboard.draw(
+                frame,
+                mode_control,
+                result,
+                output_command,
+                actuators,
+                controller.debug_lines(),
+                now,
+                fps,
+            )
             if not dashboard.enabled and now - last_telemetry >= config.TELEMETRY_INTERVAL:
-                print_telemetry(result)
+                print_telemetry(result, mode_control, output_command)
                 last_telemetry = now
             if not config.HEADLESS:
                 draw_overlay(frame, result)

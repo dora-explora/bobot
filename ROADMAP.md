@@ -61,15 +61,18 @@ Install controller input support for the new `manual` state:
 sudo apt install -y python3-evdev
 ```
 
-`main.py` starts in static mode, which keeps every motor neutral. Press the
-controller throttle-enable button to enter manual tank drive; the left and
-right vertical sticks control the matching motor sides. Any non-stick input in
-manual mode immediately neutralizes every output and returns to static mode.
-Use `CONTROLLER_DEVICE=/dev/input/eventN` if automatic gamepad discovery picks
-the wrong device. The manual TUI temporarily includes raw input diagnostics.
-Use `ROBOT_START_STATE=manual python3 main.py` to start in the manual debug
-state without first matching the throttle-enable mapping. `START_STATE=manual` is
-also accepted as an alias.
+`main.py` starts in static mode, which keeps every motor neutral. A enters
+manual tank drive, B enters static mode, and Y opens the radial state menu.
+Inside the menu, only the right stick changes the selection; A confirms and B
+closes the menu. Menu output is always neutral. The left and right vertical
+sticks control the matching motor sides in manual mode.
+
+Selecting detector enters it with motor output disabled. Press A once to enable
+detector output; pressing A again enters manual mode. Opening the menu from
+detector clears this enable latch. Use `CONTROLLER_DEVICE=/dev/input/eventN` if
+automatic gamepad discovery picks the wrong device. The manual and menu TUI
+views include raw input diagnostics. `ROBOT_START_STATE` and its `START_STATE`
+alias select the initial state, but detector still starts with output disabled.
 
 Useful tuning variables:
 
@@ -126,12 +129,15 @@ CLOSE_BALL_AREA_RATIO=0.18
 LOST_TARGET_TIMEOUT=0.5
 ROBOT_START_STATE=static
 CONTROLLER_DEVICE=auto
-CONTROLLER_THROTTLE_ENABLE_BUTTON=304
+CONTROLLER_A_BUTTON=304
+CONTROLLER_B_BUTTON=305
+CONTROLLER_Y_BUTTON=307
 CONTROLLER_LEFT_X_AXIS=0
 CONTROLLER_LEFT_Y_AXIS=1
 CONTROLLER_RIGHT_X_AXIS=3
 CONTROLLER_RIGHT_Y_AXIS=4
 CONTROLLER_DEADZONE=0.10
+CONTROLLER_MENU_DEADZONE=0.35
 CONTROLLER_INVERT_Y=true
 ```
 
@@ -143,8 +149,10 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 
 - Test all four ESC channels with wheels off the ground first.
 - Keep `ENABLE_ACTUATORS=false` until PWM ranges are confirmed.
-- Static mode is the default throttle interlock; enter manual only with the
-  vehicle lifted or restrained during bench testing.
+- Static mode is the default throttle interlock. A enters manual, B returns to
+  static, and Y opens the neutral-output radial menu.
+- Detector output is disabled whenever detector is selected and must be
+  explicitly enabled with A.
 - `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.
 - Use Ctrl-C to exit; the program neutralizes all four motor channels in its shutdown path.
 - Add a physical kill switch before any fast or untethered run.

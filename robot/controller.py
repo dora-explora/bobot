@@ -1,5 +1,6 @@
-"""Non-blocking Linux gamepad input for the manual tank-drive state."""
+"""Non-blocking Linux gamepad input for runtime modes and tank drive."""
 from dataclasses import dataclass
+import math
 
 from robot import config
 from robot.vision_common import clamp
@@ -7,9 +8,10 @@ from robot.vision_common import clamp
 
 @dataclass
 class ControllerUpdate:
-    enable_throttle: bool = False
-    abort_manual: bool = False
-    abort_reason: str = ""
+    a_pressed: bool = False
+    b_pressed: bool = False
+    y_pressed: bool = False
+    controller_lost: bool = False
 
 
 class ControllerInput:
@@ -51,7 +53,9 @@ class ControllerInput:
                 score = (
                     (10 if config.CONTROLLER_RIGHT_Y_AXIS in axis_codes else 0)
                     + (10 if config.CONTROLLER_LEFT_Y_AXIS in axis_codes else 0)
-                    + (5 if config.CONTROLLER_THROTTLE_ENABLE_BUTTON in key_codes else 0)
+                    + (3 if config.CONTROLLER_A_BUTTON in key_codes else 0)
+                    + (3 if config.CONTROLLER_B_BUTTON in key_codes else 0)
+                    + (3 if config.CONTROLLER_Y_BUTTON in key_codes else 0)
                     + min(len(axis_codes), 8)
                 )
                 candidates.append((score, device, keys, axes, key_codes, axis_codes))
@@ -84,13 +88,10 @@ class ControllerInput:
     def connected(self):
         return self.device is not None
 
-    def poll(self, manual_active):
-        """Return throttle-enable and manual-to-static safety requests."""
+    def poll(self):
+        """Return edge-triggered mode button presses without blocking."""
         update = ControllerUpdate()
         if self.device is None:
-            if manual_active and self.disconnected:
-                update.abort_manual = True
-                update.abort_reason = self.error or "controller disconnected"
             return update
         try:
             events = list(self.device.read())
@@ -100,42 +101,56 @@ class ControllerInput:
             self.error = "controller disconnected: " + str(error)
             self.device = None
             self.disconnected = True
-            if manual_active:
-                update.abort_manual = True
-                update.abort_reason = self.error
+            update.controller_lost = True
             return update
 
         for event in events:
             self.last_event = self._describe_event(event)
             if event.type == self.ecodes.EV_KEY:
-                if event.code == config.CONTROLLER_THROTTLE_ENABLE_BUTTON:
-                    if event.value == 1 and not manual_active:
-                        update.enable_throttle = True
+                if event.value != 1:
                     continue
-                if manual_active and event.value == 1:
-                    update.abort_manual = True
-                    update.abort_reason = "button " + self._key_name(event.code)
+                if event.code == config.CONTROLLER_A_BUTTON:
+                    update.a_pressed = True
+                elif event.code == config.CONTROLLER_B_BUTTON:
+                    update.b_pressed = True
+                elif event.code == config.CONTROLLER_Y_BUTTON:
+                    update.y_pressed = True
             elif event.type == self.ecodes.EV_ABS:
                 self.axis_values[event.code] = event.value
-                if manual_active and event.code not in self._stick_axes():
-                    update.abort_manual = True
-                    update.abort_reason = "non-stick axis " + self._axis_name(event.code)
         return update
 
     def tank_sides(self):
         return self._vertical_axis(config.CONTROLLER_LEFT_Y_AXIS), self._vertical_axis(config.CONTROLLER_RIGHT_Y_AXIS)
 
+    def right_stick(self):
+        """Return radial-menu x/forward-y commands; the left stick is ignored."""
+        x = self._normalized_axis(config.CONTROLLER_RIGHT_X_AXIS)
+        y = self._normalized_axis(config.CONTROLLER_RIGHT_Y_AXIS, invert=config.CONTROLLER_INVERT_Y)
+        magnitude = math.hypot(x, y)
+        deadzone = clamp(config.CONTROLLER_MENU_DEADZONE, 0.0, 0.95)
+        if magnitude <= deadzone:
+            return 0.0, 0.0
+        scaled = clamp((magnitude - deadzone) / (1.0 - deadzone), 0.0, 1.0)
+        return x / magnitude * scaled, y / magnitude * scaled
+
     def debug_lines(self):
         left, right = self.tank_sides()
+        menu_x, menu_y = self.right_stick()
         device = "none" if self.device is None else self.device.path + " " + self.device.name
         return [
             "device=" + device,
             "last_event=" + self.last_event,
             "left_y raw=" + str(self.axis_values.get(config.CONTROLLER_LEFT_Y_AXIS, "n/a")) + " command=" + str(round(left, 3)),
             "right_y raw=" + str(self.axis_values.get(config.CONTROLLER_RIGHT_Y_AXIS, "n/a")) + " command=" + str(round(right, 3)),
+            "menu right_stick x=" + str(round(menu_x, 3)) + " y=" + str(round(menu_y, 3)),
             "axes Lx/Ly/Rx/Ry=" + "/".join(str(code) for code in self._stick_axes())
-            + " throttle_enable_button=" + str(config.CONTROLLER_THROTTLE_ENABLE_BUTTON)
-            + " deadzone=" + str(config.CONTROLLER_DEADZONE),
+            + " buttons A/B/Y=" + "/".join(str(code) for code in (
+                config.CONTROLLER_A_BUTTON,
+                config.CONTROLLER_B_BUTTON,
+                config.CONTROLLER_Y_BUTTON,
+            ))
+            + " deadzone=" + str(config.CONTROLLER_DEADZONE)
+            + " menu_deadzone=" + str(config.CONTROLLER_MENU_DEADZONE),
             "detected axes=" + self._code_list(self.supported_axis_codes, self._axis_name),
             "detected keys=" + self._code_list(self.supported_key_codes, self._key_name),
         ] + (["error=" + self.error] if self.error else [])
@@ -146,17 +161,19 @@ class ControllerInput:
             self.device = None
 
     def _vertical_axis(self, code):
+        normalized = self._normalized_axis(code, invert=config.CONTROLLER_INVERT_Y)
+        deadzone = clamp(config.CONTROLLER_DEADZONE, 0.0, 0.95)
+        if abs(normalized) <= deadzone:
+            return 0.0
+        return clamp((abs(normalized) - deadzone) / (1.0 - deadzone), 0.0, 1.0) * (1.0 if normalized > 0 else -1.0)
+
+    def _normalized_axis(self, code, invert=False):
         value = self.axis_values.get(code)
         minimum, maximum = self.axis_ranges.get(code, (-32768, 32767))
         if value is None or maximum <= minimum:
             return 0.0
         normalized = (value - minimum) / float(maximum - minimum) * 2.0 - 1.0
-        if config.CONTROLLER_INVERT_Y:
-            normalized = -normalized
-        deadzone = clamp(config.CONTROLLER_DEADZONE, 0.0, 0.95)
-        if abs(normalized) <= deadzone:
-            return 0.0
-        return clamp((abs(normalized) - deadzone) / (1.0 - deadzone), 0.0, 1.0) * (1.0 if normalized > 0 else -1.0)
+        return -normalized if invert else normalized
 
     def _stick_axes(self):
         return (

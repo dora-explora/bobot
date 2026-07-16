@@ -120,15 +120,18 @@ ROBOT_START_STATE = os.environ.get(
     os.environ.get("START_STATE", "static"),
 ).lower()
 
-# Linux gamepad configuration. Defaults follow the common evdev gamepad map.
+# Linux gamepad configuration. Defaults follow the common evdev Xbox-style map.
 CONTROLLER_DEVICE = os.environ.get("CONTROLLER_DEVICE", "auto")
-CONTROLLER_THROTTLE_ENABLE_BUTTON = env_int(
-    "CONTROLLER_THROTTLE_ENABLE_BUTTON",
-    "304",
+CONTROLLER_A_BUTTON = env_int(
+    "CONTROLLER_A_BUTTON",
+    os.environ.get("CONTROLLER_THROTTLE_ENABLE_BUTTON", "304"),
 )
+CONTROLLER_B_BUTTON = env_int("CONTROLLER_B_BUTTON", "305")
+CONTROLLER_Y_BUTTON = env_int("CONTROLLER_Y_BUTTON", "307")
 CONTROLLER_LEFT_X_AXIS = env_int("CONTROLLER_LEFT_X_AXIS", "0")
 CONTROLLER_LEFT_Y_AXIS = env_int("CONTROLLER_LEFT_Y_AXIS", "1")
 CONTROLLER_RIGHT_X_AXIS = env_int("CONTROLLER_RIGHT_X_AXIS", "3")
 CONTROLLER_RIGHT_Y_AXIS = env_int("CONTROLLER_RIGHT_Y_AXIS", "4")
 CONTROLLER_DEADZONE = env_float("CONTROLLER_DEADZONE", "0.10")
+CONTROLLER_MENU_DEADZONE = env_float("CONTROLLER_MENU_DEADZONE", "0.35")
 CONTROLLER_INVERT_Y = env_bool("CONTROLLER_INVERT_Y", "true")
