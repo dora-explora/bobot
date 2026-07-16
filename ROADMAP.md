@@ -61,14 +61,14 @@ Install controller input support for the new `manual` state:
 sudo apt install -y python3-evdev
 ```
 
-While running `main.py`, press the controller A button to enter manual tank
-drive. The left and right vertical sticks control the matching motor sides.
-Any non-stick controller input neutralizes every output and exits the runtime,
-including while the robot is in detector mode.
+`main.py` starts in static mode, which keeps every motor neutral. Press the
+controller throttle-enable button to enter manual tank drive; the left and
+right vertical sticks control the matching motor sides. Any non-stick input in
+manual mode immediately neutralizes every output and returns to static mode.
 Use `CONTROLLER_DEVICE=/dev/input/eventN` if automatic gamepad discovery picks
 the wrong device. The manual TUI temporarily includes raw input diagnostics.
 Use `ROBOT_START_STATE=manual python3 main.py` to start in the manual debug
-state without first matching the A-button mapping. `START_STATE=manual` is
+state without first matching the throttle-enable mapping. `START_STATE=manual` is
 also accepted as an alias.
 
 Useful tuning variables:
@@ -112,7 +112,6 @@ MOTOR_REAR_RIGHT_ESC_US=1400,1500,1600
 ACTUATOR_WATCHDOG_SECONDS=0.25
 ACTUATOR_STARTUP_TIMEOUT_SECONDS=3.0
 FATAL_ERROR_LOG=/tmp/bobot-fatal.log
-ENABLE_THROTTLE=false
 THROTTLE_LIMIT=1.0
 THROTTLE_MIN_ACTIVE=0.06
 THROTTLE_ALLOW_REVERSE=false
@@ -125,9 +124,9 @@ STEERING_GAIN=1.25
 STEERING_DEADBAND=0.06
 CLOSE_BALL_AREA_RATIO=0.18
 LOST_TARGET_TIMEOUT=0.5
-ROBOT_START_STATE=detector
+ROBOT_START_STATE=static
 CONTROLLER_DEVICE=auto
-CONTROLLER_A_BUTTON=304
+CONTROLLER_THROTTLE_ENABLE_BUTTON=304
 CONTROLLER_LEFT_X_AXIS=0
 CONTROLLER_LEFT_Y_AXIS=1
 CONTROLLER_RIGHT_X_AXIS=3
@@ -144,7 +143,8 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 
 - Test all four ESC channels with wheels off the ground first.
 - Keep `ENABLE_ACTUATORS=false` until PWM ranges are confirmed.
-- Keep `ENABLE_THROTTLE=false` until the car is lifted or restrained.
+- Static mode is the default throttle interlock; enter manual only with the
+  vehicle lifted or restrained during bench testing.
 - `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.
 - Use Ctrl-C to exit; the program neutralizes all four motor channels in its shutdown path.
 - Add a physical kill switch before any fast or untethered run.

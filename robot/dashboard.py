@@ -53,15 +53,18 @@ class TuiDashboard:
         target, debug, command = result.best_target, result.debug, result.command
         lines = [
             "Robot Code TUI", "==============", "",
-            "[State]", "active=" + state_name + "  available=detector,manual", "",
+            "[State]", "active=" + state_name + "  available=static,detector,manual", "",
             "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
             + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
-            "actuators=" + str(config.ENABLE_ACTUATORS) + " throttle_enabled=" + str(config.ENABLE_THROTTLE)
+            "actuators=" + str(config.ENABLE_ACTUATORS)
             + " throttle_limit=" + str(config.THROTTLE_LIMIT)
             + " ctrl-c=neutralize and exit", "",
         ]
         if state_name == "manual":
-            lines.extend(["[Manual Controller]", "A enters from detector; any non-stick input kills outputs in every state."])
+            lines.extend(["[Manual Controller]", "Non-stick input returns immediately to static mode and neutralizes outputs."])
+            lines.extend(result.state_lines)
+        elif state_name == "static":
+            lines.extend(["[Static]", "Motor output is neutral by design."])
             lines.extend(result.state_lines)
         else:
             lines.append("[Detector]")
@@ -80,10 +83,10 @@ class TuiDashboard:
                       "raw=" + str(round(debug.raw_steering, 3)) + " smoothed=" + str(round(debug.smoothed_steering, 3))
                       + " slew_limited=" + str(debug.steering_limited), self._steering_bar(command.steering, width),
                       self._motors(actuators)])
-        if state_name != "manual":
+        if state_name == "detector":
             lines.extend(["", "[Cone Slalom]"])
             lines.extend(result.state_lines)
-        if state_name == "manual":
+        if state_name in ("manual", "static"):
             return lines
         lines.extend(["", "[Vision]", "colors=" + str(debug.active_colors) + " masks=" + str(debug.masks_checked)
                       + " contours=" + str(debug.contours_seen) + " balls=" + str(debug.accepted) + " cones=" + str(debug.cones),

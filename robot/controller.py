@@ -7,7 +7,7 @@ from robot.vision_common import clamp
 
 @dataclass
 class ControllerUpdate:
-    start_manual: bool = False
+    enable_throttle: bool = False
     abort_manual: bool = False
     abort_reason: str = ""
 
@@ -51,7 +51,7 @@ class ControllerInput:
                 score = (
                     (10 if config.CONTROLLER_RIGHT_Y_AXIS in axis_codes else 0)
                     + (10 if config.CONTROLLER_LEFT_Y_AXIS in axis_codes else 0)
-                    + (5 if config.CONTROLLER_A_BUTTON in key_codes else 0)
+                    + (5 if config.CONTROLLER_THROTTLE_ENABLE_BUTTON in key_codes else 0)
                     + min(len(axis_codes), 8)
                 )
                 candidates.append((score, device, keys, axes, key_codes, axis_codes))
@@ -85,10 +85,10 @@ class ControllerInput:
         return self.device is not None
 
     def poll(self, manual_active):
-        """Return manual-entry and global controller-kill requests."""
+        """Return throttle-enable and manual-to-static safety requests."""
         update = ControllerUpdate()
         if self.device is None:
-            if self.disconnected:
+            if manual_active and self.disconnected:
                 update.abort_manual = True
                 update.abort_reason = self.error or "controller disconnected"
             return update
@@ -100,23 +100,24 @@ class ControllerInput:
             self.error = "controller disconnected: " + str(error)
             self.device = None
             self.disconnected = True
-            update.abort_manual = True
-            update.abort_reason = self.error
+            if manual_active:
+                update.abort_manual = True
+                update.abort_reason = self.error
             return update
 
         for event in events:
             self.last_event = self._describe_event(event)
             if event.type == self.ecodes.EV_KEY:
-                if event.code == config.CONTROLLER_A_BUTTON:
+                if event.code == config.CONTROLLER_THROTTLE_ENABLE_BUTTON:
                     if event.value == 1 and not manual_active:
-                        update.start_manual = True
+                        update.enable_throttle = True
                     continue
-                if event.value == 1:
+                if manual_active and event.value == 1:
                     update.abort_manual = True
                     update.abort_reason = "button " + self._key_name(event.code)
             elif event.type == self.ecodes.EV_ABS:
                 self.axis_values[event.code] = event.value
-                if event.code not in self._stick_axes():
+                if manual_active and event.code not in self._stick_axes():
                     update.abort_manual = True
                     update.abort_reason = "non-stick axis " + self._axis_name(event.code)
         return update
@@ -133,7 +134,8 @@ class ControllerInput:
             "left_y raw=" + str(self.axis_values.get(config.CONTROLLER_LEFT_Y_AXIS, "n/a")) + " command=" + str(round(left, 3)),
             "right_y raw=" + str(self.axis_values.get(config.CONTROLLER_RIGHT_Y_AXIS, "n/a")) + " command=" + str(round(right, 3)),
             "axes Lx/Ly/Rx/Ry=" + "/".join(str(code) for code in self._stick_axes())
-            + " A_button=" + str(config.CONTROLLER_A_BUTTON) + " deadzone=" + str(config.CONTROLLER_DEADZONE),
+            + " throttle_enable_button=" + str(config.CONTROLLER_THROTTLE_ENABLE_BUTTON)
+            + " deadzone=" + str(config.CONTROLLER_DEADZONE),
             "detected axes=" + self._code_list(self.supported_axis_codes, self._axis_name),
             "detected keys=" + self._code_list(self.supported_key_codes, self._key_name),
         ] + (["error=" + self.error] if self.error else [])

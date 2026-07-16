@@ -19,8 +19,6 @@ def normalized_to_pulse(command, minimum_us, center_us, maximum_us):
 
 
 def normalize_throttle(command):
-    if not config.ENABLE_THROTTLE:
-        return 0.0
     command = clamp(command, -1.0, 1.0)
     if command > 0:
         command = min(command, config.THROTTLE_LIMIT)

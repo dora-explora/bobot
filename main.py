@@ -88,9 +88,29 @@ class ManualState:
         )
 
 
-# Sections are imported above and kept as independent modules. Detector and
-# manual are the only currently runnable states.
+class StaticState:
+    """Default safety state: camera and TUI stay active, motor output is neutral."""
+
+    name = "static"
+
+    def __init__(self, controller):
+        self.controller = controller
+
+    def process(self, _frame, _now):
+        return StateResult(
+            command=DriveCommand(mode="static", reason="waiting for throttle enable"),
+            state_lines=self.controller.debug_lines() + [
+                "throttle is neutral; press enable button "
+                + str(config.CONTROLLER_THROTTLE_ENABLE_BUTTON)
+                + " to enter manual mode",
+            ],
+        )
+
+
+# Sections are imported above and kept as independent modules. Static is the
+# default safety state; manual is enabled only by the configured controller key.
 COURSE_SECTIONS = {
+    "static": StaticState,
     "detector": DetectorState,
     "manual": ManualState,
     "bucket": BucketDetection,
@@ -178,6 +198,7 @@ def safe_shutdown(actuators, camera, controller, dashboard):
 def run():
     controller = ControllerInput()
     states = {
+        "static": StaticState(controller),
         "detector": DetectorState(),
         "manual": ManualState(controller),
     }
@@ -209,12 +230,12 @@ def run():
             controller_update = controller.poll(active_state == "manual")
             if controller_update.abort_manual:
                 actuators.neutralize()
-                print("Controller kill: " + controller_update.abort_reason + ". Outputs neutralized; exiting.")
-                break
-            if active_state == "detector" and controller_update.start_manual:
+                active_state = "static"
+                print("Controller stop: " + controller_update.abort_reason + ". Outputs neutralized; entered static mode.")
+            if active_state != "manual" and controller_update.enable_throttle:
                 active_state = "manual"
                 actuators.neutralize()
-                print("Controller A pressed. Entered manual tank-drive mode.")
+                print("Throttle enable pressed. Entered manual tank-drive mode.")
 
             state = states[active_state]
             result = state.process(frame, now)

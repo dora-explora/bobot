@@ -42,7 +42,6 @@ if HEADLESS_REQUEST not in ("auto", "true", "false"):
     raise ValueError("HEADLESS must be auto, true, or false")
 
 ENABLE_ACTUATORS = env_bool("ENABLE_ACTUATORS", "false")
-ENABLE_THROTTLE = env_bool("ENABLE_THROTTLE", "false")
 ACTUATOR_WATCHDOG_SECONDS = env_float("ACTUATOR_WATCHDOG_SECONDS", "0.25")
 ACTUATOR_STARTUP_TIMEOUT_SECONDS = env_float("ACTUATOR_STARTUP_TIMEOUT_SECONDS", "3.0")
 FATAL_ERROR_LOG = os.environ.get("FATAL_ERROR_LOG", "/tmp/bobot-fatal.log")
@@ -118,12 +117,15 @@ CLOSE_BALL_AREA_RATIO = env_float("CLOSE_BALL_AREA_RATIO", "0.18")
 LOST_TARGET_TIMEOUT = env_float("LOST_TARGET_TIMEOUT", "0.5")
 ROBOT_START_STATE = os.environ.get(
     "ROBOT_START_STATE",
-    os.environ.get("START_STATE", "detector"),
+    os.environ.get("START_STATE", "static"),
 ).lower()
 
 # Linux gamepad configuration. Defaults follow the common evdev gamepad map.
 CONTROLLER_DEVICE = os.environ.get("CONTROLLER_DEVICE", "auto")
-CONTROLLER_A_BUTTON = env_int("CONTROLLER_A_BUTTON", "304")
+CONTROLLER_THROTTLE_ENABLE_BUTTON = env_int(
+    "CONTROLLER_THROTTLE_ENABLE_BUTTON",
+    "304",
+)
 CONTROLLER_LEFT_X_AXIS = env_int("CONTROLLER_LEFT_X_AXIS", "0")
 CONTROLLER_LEFT_Y_AXIS = env_int("CONTROLLER_LEFT_Y_AXIS", "1")
 CONTROLLER_RIGHT_X_AXIS = env_int("CONTROLLER_RIGHT_X_AXIS", "3")
