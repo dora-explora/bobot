@@ -23,9 +23,9 @@ def normalize_throttle(command):
         return 0.0
     command = clamp(command, -1.0, 1.0)
     if command > 0:
-        command = min(command, config.THROTTLE_HARD_LIMIT)
-        return min(config.THROTTLE_MIN_ACTIVE, config.THROTTLE_HARD_LIMIT) if 0 < command < config.THROTTLE_MIN_ACTIVE else command
-    return max(command, -config.THROTTLE_HARD_LIMIT) if command < 0 and config.THROTTLE_ALLOW_REVERSE else 0.0
+        command = min(command, config.THROTTLE_LIMIT)
+        return min(config.THROTTLE_MIN_ACTIVE, config.THROTTLE_LIMIT) if 0 < command < config.THROTTLE_MIN_ACTIVE else command
+    return max(command, -config.THROTTLE_LIMIT) if command < 0 and config.THROTTLE_ALLOW_REVERSE else 0.0
 
 
 def throttle_pulse(command, esc_us):
@@ -43,7 +43,7 @@ def motor_mix(command):
         }
         return {name: requested[name] * sign for name, _, sign in config.MOTOR_OUTPUTS}
 
-    turn = clamp(command.steering, -1.0, 1.0) * min(abs(config.MOTOR_STEERING_MIX), config.THROTTLE_HARD_LIMIT)
+    turn = clamp(command.steering, -1.0, 1.0) * min(abs(config.MOTOR_STEERING_MIX), config.THROTTLE_LIMIT)
     left, right = command.throttle + turn, command.throttle - turn
     requested = {"front_left": left, "front_right": right, "rear_left": left, "rear_right": right}
     return {name: requested[name] * sign for name, _, sign in config.MOTOR_OUTPUTS}

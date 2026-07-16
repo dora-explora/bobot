@@ -57,6 +57,7 @@ class TuiDashboard:
             "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
             + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
             "actuators=" + str(config.ENABLE_ACTUATORS) + " throttle_enabled=" + str(config.ENABLE_THROTTLE)
+            + " throttle_limit=" + str(config.THROTTLE_LIMIT)
             + " ctrl-c=neutralize and exit", "",
         ]
         if state_name == "manual":

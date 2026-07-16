@@ -68,7 +68,9 @@ class ManualState:
         self.controller = controller
 
     def process(self, _frame, _now):
-        left, right = self.controller.tank_sides()
+        left_input, right_input = self.controller.tank_sides()
+        left = left_input * config.THROTTLE_LIMIT
+        right = right_input * config.THROTTLE_LIMIT
         return StateResult(
             command=DriveCommand(
                 steering=max(-1.0, min(1.0, (left - right) / 2.0)),
@@ -78,7 +80,11 @@ class ManualState:
                 left=left,
                 right=right,
             ),
-            state_lines=self.controller.debug_lines(),
+            state_lines=self.controller.debug_lines() + [
+                "scaled motor input left=" + str(round(left, 3))
+                + " right=" + str(round(right, 3))
+                + " limit=" + str(config.THROTTLE_LIMIT),
+            ],
         )
 
 

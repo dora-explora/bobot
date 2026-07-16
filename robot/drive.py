@@ -140,4 +140,4 @@ def ball_seeking_command(target, frame_width, frame_area, last_seen, now):
     steering = 0.0 if abs(error) < config.STEERING_DEADBAND else clamp(error * config.STEERING_GAIN, -1.0, 1.0)
     if target.area / float(frame_area) >= config.CLOSE_BALL_AREA_RATIO:
         return DriveCommand(steering, 0.0, "assist", "target close")
-    return DriveCommand(steering, min(config.MAX_TRIAL_THROTTLE, config.THROTTLE_HARD_LIMIT), "assist", "seeking " + target.label)
+    return DriveCommand(steering, min(config.MAX_TRIAL_THROTTLE, config.THROTTLE_LIMIT), "assist", "seeking " + target.label)
