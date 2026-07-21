@@ -101,7 +101,7 @@ class StaticState:
         return StateResult(
             command=DriveCommand(mode="static", reason="static mode"),
             state_lines=self.controller.debug_lines() + [
-                "motors neutral; A=manual Y=radial menu B=remain static",
+                "motors neutral; A=manual hold Y=radial menu B=remain static",
             ],
         )
 

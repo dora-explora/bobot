@@ -11,6 +11,7 @@ class ControllerUpdate:
     a_pressed: bool = False
     b_pressed: bool = False
     y_pressed: bool = False
+    y_released: bool = False
     controller_lost: bool = False
 
 
@@ -110,9 +111,11 @@ class ControllerInput:
         for event in events:
             self.last_event = self._describe_event(event)
             if event.type == self.ecodes.EV_KEY:
-                if event.value != 1:
+                if event.code == config.CONTROLLER_Y_BUTTON and event.value == 0:
+                    update.y_released = True
+                elif event.value != 1:
                     continue
-                if event.code == config.CONTROLLER_A_BUTTON:
+                elif event.code == config.CONTROLLER_A_BUTTON:
                     update.a_pressed = True
                 elif event.code == config.CONTROLLER_B_BUTTON:
                     update.b_pressed = True

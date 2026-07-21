@@ -62,10 +62,11 @@ sudo apt install -y python3-evdev
 ```
 
 `main.py` starts in static mode, which keeps every motor neutral. A enters
-manual tank drive, B enters static mode, and Y opens the radial state menu.
-Inside the menu, only the right stick changes the selection; A confirms and B
-closes the menu. Menu output is always neutral. The left and right vertical
-sticks control the matching motor sides in manual mode.
+manual tank drive, B enters static mode, and holding Y opens the radial state
+menu. Either stick changes the selection, with the most recently moved stick
+taking priority; releasing Y confirms the selection and B cancels it. Menu
+output is always neutral. The left and right vertical sticks control the
+matching motor sides in manual mode.
 
 Selecting detector enters it with motor output disabled. Press A once to enable
 detector output; pressing A again enters manual mode. Opening the menu from
@@ -150,7 +151,8 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 - Test all four ESC channels with wheels off the ground first.
 - Keep `ENABLE_ACTUATORS=false` until PWM ranges are confirmed.
 - Static mode is the default throttle interlock. A enters manual, B returns to
-  static, and Y opens the neutral-output radial menu.
+  static, and holding Y opens the neutral-output radial menu; releasing Y
+  confirms its selection.
 - Detector output is disabled whenever detector is selected and must be
   explicitly enabled with A.
 - `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.

@@ -17,11 +17,11 @@ class ModeControlTests(unittest.TestCase):
         self.assertEqual(modes.gate_command(planned, decision.neutralize_this_frame).mode, "disabled")
         self.assertIs(modes.gate_command(planned), planned)
 
-    def test_selecting_detector_requires_a_before_output_is_enabled(self):
+    def test_releasing_y_selects_detector_and_requires_a_before_output_is_enabled(self):
         modes = ModeControl("static")
         modes.update(ControllerUpdate(y_pressed=True), (0.0, 1.0))
 
-        decision = modes.update(ControllerUpdate(a_pressed=True), (0.0, 1.0))
+        decision = modes.update(ControllerUpdate(y_released=True), (0.0, 1.0))
 
         self.assertEqual(modes.active_state, "detector")
         self.assertFalse(modes.detector_throttle_enabled)

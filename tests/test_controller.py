@@ -59,6 +59,7 @@ class ControllerInputTests(unittest.TestCase):
         self.assertTrue(update.a_pressed)
         self.assertTrue(update.b_pressed)
         self.assertTrue(update.y_pressed)
+        self.assertFalse(update.y_released)
 
     def test_button_release_and_unmapped_input_do_not_change_modes(self):
         controller = controller_with_events([
@@ -71,6 +72,17 @@ class ControllerInputTests(unittest.TestCase):
         self.assertFalse(update.a_pressed)
         self.assertFalse(update.b_pressed)
         self.assertFalse(update.y_pressed)
+        self.assertFalse(update.y_released)
+
+    def test_y_release_is_reported_separately_from_y_press(self):
+        controller = controller_with_events([
+            SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_Y_BUTTON, value=0),
+        ])
+
+        update = controller.poll()
+
+        self.assertFalse(update.y_pressed)
+        self.assertTrue(update.y_released)
 
     def test_radial_menu_uses_the_most_recently_moved_stick(self):
         controller = controller_with_events([])

@@ -65,7 +65,7 @@ class TuiDashboard:
             "Robot Code TUI", "==============", "",
             "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
             + "  available=static,detector,manual",
-            "controls: A=manual/select  B=static/close menu  Y=radial menu",
+            "controls: A=manual  B=static/cancel menu  hold Y=radial menu",
             "last_action=" + mode_control.last_action, "",
             "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
             + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
@@ -82,7 +82,7 @@ class TuiDashboard:
                 "menu stick=" + mode_control.menu_stick_source
                 + " x=" + str(round(mode_control.menu_stick[0], 3))
                 + " y=" + str(round(mode_control.menu_stick[1], 3)),
-                "A selects; B closes and returns to the paused state. Motor output remains neutral.",
+                "Release Y to select; B closes and returns to the paused state. Motor output remains neutral.",
                 "",
                 "[Controller Debug]",
             ])

@@ -62,12 +62,12 @@ class ModeControl:
             if controller_update.b_pressed:
                 self.menu_active = False
                 return self._decision(True, "closed radial menu; returned to " + self.active_state)
-            if controller_update.a_pressed:
+            if controller_update.y_released:
                 selected = self.menu_selection
                 self.menu_active = False
                 self.active_state = selected
                 self.detector_throttle_enabled = False
-                return self._decision(True, "selected " + selected + " from radial menu")
+                return self._decision(True, "released Y; selected " + selected + " from radial menu")
             return ModeDecision()
 
         if controller_update.b_pressed:
