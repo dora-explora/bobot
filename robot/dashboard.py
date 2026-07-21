@@ -79,8 +79,9 @@ class TuiDashboard:
             lines.extend(["[Radial Menu]"])
             lines.extend(self._radial_menu(mode_control.menu_selection, width))
             lines.extend([
-                "right_stick x=" + str(round(mode_control.right_stick[0], 3))
-                + " y=" + str(round(mode_control.right_stick[1], 3)),
+                "menu stick=" + mode_control.menu_stick_source
+                + " x=" + str(round(mode_control.menu_stick[0], 3))
+                + " y=" + str(round(mode_control.menu_stick[1], 3)),
                 "A selects; B closes and returns to the paused state. Motor output remains neutral.",
                 "",
                 "[Controller Debug]",
@@ -145,7 +146,10 @@ class TuiDashboard:
 
     @staticmethod
     def _radial_menu(selection, terminal_width):
-        width = max(24, terminal_width - 1)
+        # Keep the menu compact and centered instead of spanning the terminal.
+        # Terminal cells are usually about twice as tall as they are wide, so a
+        # 21-by-9 character canvas reads as approximately square.
+        width = min(21, max(17, terminal_width - 1))
 
         def label(name):
             return "[" + name.upper() + "]" if selection == name else name
@@ -159,8 +163,13 @@ class TuiDashboard:
         gap = max(1, width - len(static) - len(manual))
         return [
             centered(detector),
+            centered(""),
             centered("/ \\"),
+            centered(""),
             static + (" " * gap) + manual,
+            centered(""),
+            centered(""),
+            centered(""),
             centered("selection=" + selection),
         ]
 

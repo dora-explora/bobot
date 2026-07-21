@@ -225,7 +225,8 @@ def run():
                 fps = 1.0 / max(.001, now - last_frame_time)
             last_frame_time = now
             controller_update = controller.poll()
-            decision = mode_control.update(controller_update, controller.right_stick())
+            menu_stick, menu_stick_source = controller.menu_stick()
+            decision = mode_control.update(controller_update, menu_stick, menu_stick_source)
             if decision.message and not dashboard.enabled:
                 print("Controller: " + decision.message)
 

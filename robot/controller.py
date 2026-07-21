@@ -27,6 +27,9 @@ class ControllerInput:
         self.supported_axis_codes = []
         self.supported_key_codes = []
         self.disconnected = False
+        self._menu_stick_source = "right"
+        self._menu_input_sequence = 0
+        self._menu_stick_sequence = {"left": 0, "right": 0}
         self._connect()
 
     def _connect(self):
@@ -117,15 +120,36 @@ class ControllerInput:
                     update.y_pressed = True
             elif event.type == self.ecodes.EV_ABS:
                 self.axis_values[event.code] = event.value
+                stick = self._menu_stick_for_axis(event.code)
+                if stick is not None:
+                    self._menu_input_sequence += 1
+                    self._menu_stick_sequence[stick] = self._menu_input_sequence
+                    self._menu_stick_source = stick
         return update
 
     def tank_sides(self):
         return self._vertical_axis(config.CONTROLLER_LEFT_Y_AXIS), self._vertical_axis(config.CONTROLLER_RIGHT_Y_AXIS)
 
     def right_stick(self):
-        """Return radial-menu x/forward-y commands; the left stick is ignored."""
-        x = self._normalized_axis(config.CONTROLLER_RIGHT_X_AXIS)
-        y = self._normalized_axis(config.CONTROLLER_RIGHT_Y_AXIS, invert=config.CONTROLLER_INVERT_Y)
+        """Return the right-stick radial-menu vector for compatibility/debugging."""
+        return self._stick_vector(config.CONTROLLER_RIGHT_X_AXIS, config.CONTROLLER_RIGHT_Y_AXIS)
+
+    def left_stick(self):
+        """Return the left-stick radial-menu vector for menu selection."""
+        return self._stick_vector(config.CONTROLLER_LEFT_X_AXIS, config.CONTROLLER_LEFT_Y_AXIS)
+
+    def menu_stick(self):
+        """Return the last moved stick's vector and its source name for the radial menu."""
+        source = self._menu_stick_source
+        if self._menu_stick_sequence["left"] > self._menu_stick_sequence["right"]:
+            source = "left"
+        elif self._menu_stick_sequence["right"] > self._menu_stick_sequence["left"]:
+            source = "right"
+        return (self.left_stick() if source == "left" else self.right_stick()), source
+
+    def _stick_vector(self, x_axis, y_axis):
+        x = self._normalized_axis(x_axis)
+        y = self._normalized_axis(y_axis, invert=config.CONTROLLER_INVERT_Y)
         magnitude = math.hypot(x, y)
         deadzone = clamp(config.CONTROLLER_MENU_DEADZONE, 0.0, 0.95)
         if magnitude <= deadzone:
@@ -135,14 +159,18 @@ class ControllerInput:
 
     def debug_lines(self):
         left, right = self.tank_sides()
-        menu_x, menu_y = self.right_stick()
+        (menu_x, menu_y), menu_source = self.menu_stick()
+        left_menu_x, left_menu_y = self.left_stick()
+        right_menu_x, right_menu_y = self.right_stick()
         device = "none" if self.device is None else self.device.path + " " + self.device.name
         return [
             "device=" + device,
             "last_event=" + self.last_event,
             "left_y raw=" + str(self.axis_values.get(config.CONTROLLER_LEFT_Y_AXIS, "n/a")) + " command=" + str(round(left, 3)),
             "right_y raw=" + str(self.axis_values.get(config.CONTROLLER_RIGHT_Y_AXIS, "n/a")) + " command=" + str(round(right, 3)),
-            "menu right_stick x=" + str(round(menu_x, 3)) + " y=" + str(round(menu_y, 3)),
+            "menu source=" + menu_source + " x=" + str(round(menu_x, 3)) + " y=" + str(round(menu_y, 3)),
+            "menu left x=" + str(round(left_menu_x, 3)) + " y=" + str(round(left_menu_y, 3))
+            + " right x=" + str(round(right_menu_x, 3)) + " y=" + str(round(right_menu_y, 3)),
             "axes Lx/Ly/Rx/Ry=" + "/".join(str(code) for code in self._stick_axes())
             + " buttons A/B/Y=" + "/".join(str(code) for code in (
                 config.CONTROLLER_A_BUTTON,
@@ -182,6 +210,14 @@ class ControllerInput:
             config.CONTROLLER_RIGHT_X_AXIS,
             config.CONTROLLER_RIGHT_Y_AXIS,
         )
+
+    @staticmethod
+    def _menu_stick_for_axis(code):
+        if code in (config.CONTROLLER_LEFT_X_AXIS, config.CONTROLLER_LEFT_Y_AXIS):
+            return "left"
+        if code in (config.CONTROLLER_RIGHT_X_AXIS, config.CONTROLLER_RIGHT_Y_AXIS):
+            return "right"
+        return None
 
     def _describe_event(self, event):
         if event.type == self.ecodes.EV_KEY:

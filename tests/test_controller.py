@@ -40,6 +40,9 @@ def controller_with_events(events):
     controller.supported_axis_codes = []
     controller.supported_key_codes = []
     controller.disconnected = False
+    controller._menu_stick_source = "right"
+    controller._menu_input_sequence = 0
+    controller._menu_stick_sequence = {"left": 0, "right": 0}
     return controller
 
 
@@ -69,16 +72,25 @@ class ControllerInputTests(unittest.TestCase):
         self.assertFalse(update.b_pressed)
         self.assertFalse(update.y_pressed)
 
-    def test_radial_menu_uses_only_right_stick(self):
+    def test_radial_menu_uses_the_most_recently_moved_stick(self):
         controller = controller_with_events([])
-        controller.axis_values[config.CONTROLLER_LEFT_X_AXIS] = 32767
-        controller.axis_values[config.CONTROLLER_LEFT_Y_AXIS] = -32768
-
         self.assertEqual(controller.right_stick(), (0.0, 0.0))
 
-        controller.axis_values[config.CONTROLLER_RIGHT_X_AXIS] = 32767
-        controller.axis_values[config.CONTROLLER_RIGHT_Y_AXIS] = 0
-        menu_x, menu_y = controller.right_stick()
+        controller.device.events = [
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_X_AXIS, value=32767),
+        ]
+        controller.poll()
+        (menu_x, menu_y), source = controller.menu_stick()
+        self.assertEqual(source, "left")
+        self.assertGreater(menu_x, 0.9)
+        self.assertAlmostEqual(menu_y, 0.0, places=3)
+
+        controller.device.events = [
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_RIGHT_X_AXIS, value=32767),
+        ]
+        controller.poll()
+        (menu_x, menu_y), source = controller.menu_stick()
+        self.assertEqual(source, "right")
         self.assertGreater(menu_x, 0.9)
         self.assertAlmostEqual(menu_y, 0.0, places=3)
 

@@ -24,7 +24,8 @@ class ModeControl:
         self.menu_active = False
         self.menu_selection = start_state
         self.detector_throttle_enabled = False
-        self.right_stick = (0.0, 0.0)
+        self.menu_stick = (0.0, 0.0)
+        self.menu_stick_source = "right"
         self.last_action = "startup in " + start_state
 
     @property
@@ -45,16 +46,17 @@ class ModeControl:
             return "detector throttle disabled; press A to enable"
         return "enabled for " + self.active_state
 
-    def update(self, controller_update, right_stick):
+    def update(self, controller_update, menu_stick, menu_stick_source="right"):
         """Apply one batch of button events and return transition side effects."""
-        self.right_stick = right_stick
+        self.menu_stick = menu_stick
+        self.menu_stick_source = menu_stick_source
         if controller_update.controller_lost:
             if self.output_enabled or self.menu_active:
                 return self._enter_static("controller disconnected; entered static mode")
             return ModeDecision()
 
         if self.menu_active:
-            selection = self.radial_selection(right_stick)
+            selection = self.radial_selection(menu_stick)
             if selection is not None:
                 self.menu_selection = selection
             if controller_update.b_pressed:
@@ -74,7 +76,7 @@ class ModeControl:
         if controller_update.y_pressed:
             self.menu_active = True
             self.menu_selection = self.active_state
-            selection = self.radial_selection(right_stick)
+            selection = self.radial_selection(menu_stick)
             if selection is not None:
                 self.menu_selection = selection
             if self.active_state == "detector":
@@ -100,9 +102,9 @@ class ModeControl:
         return planned_command
 
     @staticmethod
-    def radial_selection(right_stick):
-        """Map the right stick to three evenly spaced radial sectors."""
-        x, y = right_stick
+    def radial_selection(menu_stick):
+        """Map either controller stick to three evenly spaced radial sectors."""
+        x, y = menu_stick
         if math.hypot(x, y) <= 0.0:
             return None
         directions = {
