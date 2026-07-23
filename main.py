@@ -13,6 +13,7 @@ from robot import config
 from robot.actuators import Pca9685Actuators
 from robot.bucket_detection import BucketDetection
 from robot.camera import open_camera
+from robot.capture_state import CaptureState
 from robot.cone_slalom import ConeSlalom
 from robot.controller import ControllerInput
 from robot.dashboard import TuiDashboard
@@ -49,7 +50,14 @@ class DetectorState:
         self.drive = DriveStabilizer()
         self.last_target_seen = 0.0
 
-    def process(self, frame, now, attitude=None, horizon=None):
+    def process(
+        self,
+        frame,
+        now,
+        attitude=None,
+        horizon=None,
+        controller_update=None,
+    ):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         detections, debug = self.objects.detect(frame, hsv, horizon)
         detections = self.tracker.update(
@@ -97,7 +105,14 @@ class ManualState:
     def __init__(self, controller):
         self.controller = controller
 
-    def process(self, _frame, _now, attitude=None, horizon=None):
+    def process(
+        self,
+        _frame,
+        _now,
+        attitude=None,
+        horizon=None,
+        controller_update=None,
+    ):
         left_input, right_input = self.controller.tank_sides()
         left = left_input * config.THROTTLE_LIMIT
         right = right_input * config.THROTTLE_LIMIT
@@ -128,7 +143,14 @@ class StaticState:
     def __init__(self, controller):
         self.controller = controller
 
-    def process(self, _frame, _now, attitude=None, horizon=None):
+    def process(
+        self,
+        _frame,
+        _now,
+        attitude=None,
+        horizon=None,
+        controller_update=None,
+    ):
         return StateResult(
             command=DriveCommand(mode="static", reason="static mode"),
             state_lines=self.controller.debug_lines() + [
@@ -145,6 +167,7 @@ COURSE_SECTIONS = {
     "static": StaticState,
     "detector": DetectorState,
     "manual": ManualState,
+    "capture": CaptureState,
     "bucket": BucketDetection,
     "cone_slalom": ConeSlalom,
     "rough_section": RoughSection,
@@ -295,6 +318,7 @@ def run():
         "static": StaticState(controller),
         "detector": DetectorState(),
         "manual": ManualState(controller),
+        "capture": CaptureState(),
     }
     mode_control = ModeControl(ACTIVE_STATE)
     dashboard = TuiDashboard()
@@ -356,7 +380,13 @@ def run():
                 print("Controller: " + decision.message)
 
             state = states[mode_control.active_state]
-            result = state.process(frame, now, attitude, horizon)
+            result = state.process(
+                frame,
+                now,
+                attitude,
+                horizon,
+                controller_update,
+            )
             output_command = mode_control.gate_command(result.command, decision.neutralize_this_frame)
             actuators.apply(output_command)
             dashboard.draw(

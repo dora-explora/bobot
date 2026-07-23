@@ -78,8 +78,8 @@ class TuiDashboard:
             lines = [
                 "Robot Code TUI",
                 "[State] active=" + state_name + " menu=" + str(mode_control.menu_active)
-                + " available=static,detector,manual",
-                "controls A=manual B=static/cancel hold-Y=menu D-pad=limit",
+                + " available=static,detector,manual,capture",
+                "controls A=manual B=static/cancel hold-Y=menu X=capture D-pad=limit",
                 "last_action=" + mode_control.last_action,
                 "[Status] camera=" + config.CAMERA_BACKEND
                 + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
@@ -95,8 +95,8 @@ class TuiDashboard:
             lines = [
                 "Robot Code TUI", "==============", "",
                 "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
-                + "  available=static,detector,manual",
-                "controls: A=manual  B=static/cancel menu  hold Y=radial menu  D-pad up/down=limit",
+                + "  available=static,detector,manual,capture",
+                "controls: A=manual  B=static/cancel  hold Y=radial menu  X=capture  D-pad=limit",
                 "last_action=" + mode_control.last_action, "",
                 "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
                 + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
@@ -135,6 +135,9 @@ class TuiDashboard:
         elif state_name == "static":
             lines.extend(["[Static]", "Motor output is neutral by design. A=manual Y=menu."])
             lines.extend(result.state_lines)
+        elif state_name == "capture":
+            lines.extend(["[Capture]", "Motor output is neutral by design."])
+            lines.extend(result.state_lines)
         else:
             lines.extend([
                 "[Detector]",
@@ -168,7 +171,7 @@ class TuiDashboard:
         if state_name == "detector":
             lines.extend(["", "[Cone Slalom]"])
             lines.extend(result.state_lines)
-        if state_name in ("manual", "static"):
+        if state_name in ("manual", "static", "capture"):
             return lines
         if not compact:
             lines.extend(["", "[Tuning]", "ball area min=" + str(config.MIN_BALL_AREA_RATIO) + " top_scale=" + str(config.MIN_BALL_AREA_TOP_SCALE)
@@ -349,14 +352,15 @@ class TuiDashboard:
         detector = label("detector")
         static = label("static")
         manual = label("manual")
+        capture = label("capture")
         gap = max(1, width - len(static) - len(manual))
         return [
             centered(detector),
             centered(""),
-            centered("/ \\"),
-            centered(""),
+            centered("|"),
             static + (" " * gap) + manual,
-            centered(""),
+            centered("|"),
+            centered(capture),
             centered(""),
             centered(""),
             centered("selection=" + selection),

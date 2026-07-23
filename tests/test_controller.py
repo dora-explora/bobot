@@ -52,6 +52,7 @@ class ControllerInputTests(unittest.TestCase):
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_A_BUTTON, value=1),
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_B_BUTTON, value=1),
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_Y_BUTTON, value=1),
+            SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_CAPTURE_BUTTON, value=1),
         ])
 
         update = controller.poll()
@@ -59,6 +60,7 @@ class ControllerInputTests(unittest.TestCase):
         self.assertTrue(update.a_pressed)
         self.assertTrue(update.b_pressed)
         self.assertTrue(update.y_pressed)
+        self.assertTrue(update.capture_pressed)
         self.assertFalse(update.y_released)
 
     def test_button_release_and_unmapped_input_do_not_change_modes(self):
@@ -73,6 +75,7 @@ class ControllerInputTests(unittest.TestCase):
         self.assertFalse(update.b_pressed)
         self.assertFalse(update.y_pressed)
         self.assertFalse(update.y_released)
+        self.assertFalse(update.capture_pressed)
         self.assertEqual(update.throttle_limit_delta, 0)
 
     def test_y_release_is_reported_separately_from_y_press(self):

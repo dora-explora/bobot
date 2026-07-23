@@ -5,7 +5,7 @@ import math
 from robot.models import DriveCommand
 
 
-MENU_OPTIONS = ("detector", "manual", "static")
+MENU_OPTIONS = ("detector", "manual", "capture", "static")
 
 
 @dataclass
@@ -30,7 +30,7 @@ class ModeControl:
 
     @property
     def output_enabled(self):
-        if self.menu_active or self.active_state == "static":
+        if self.menu_active or self.active_state in ("static", "capture"):
             return False
         if self.active_state == "detector":
             return self.detector_throttle_enabled
@@ -42,6 +42,8 @@ class ModeControl:
             return "disabled while radial menu is open"
         if self.active_state == "static":
             return "disabled by static mode"
+        if self.active_state == "capture":
+            return "disabled by capture mode"
         if self.active_state == "detector" and not self.detector_throttle_enabled:
             return "detector throttle disabled; press A to enable"
         return "enabled for " + self.active_state
@@ -103,14 +105,15 @@ class ModeControl:
 
     @staticmethod
     def radial_selection(menu_stick):
-        """Map either controller stick to three evenly spaced radial sectors."""
+        """Map either controller stick to four cardinal radial sectors."""
         x, y = menu_stick
         if math.hypot(x, y) <= 0.0:
             return None
         directions = {
             "detector": (0.0, 1.0),
-            "manual": (math.sqrt(3.0) / 2.0, -0.5),
-            "static": (-math.sqrt(3.0) / 2.0, -0.5),
+            "manual": (1.0, 0.0),
+            "capture": (0.0, -1.0),
+            "static": (-1.0, 0.0),
         }
         return max(directions, key=lambda name: x * directions[name][0] + y * directions[name][1])
 

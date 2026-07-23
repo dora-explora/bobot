@@ -75,11 +75,22 @@ class ModeControlTests(unittest.TestCase):
         self.assertEqual(modes.active_state, "manual")
         self.assertTrue(decision.neutralize_this_frame)
 
-    def test_right_stick_selects_each_radial_sector(self):
+    def test_stick_selects_each_radial_sector(self):
         self.assertEqual(ModeControl.radial_selection((0.0, 1.0)), "detector")
-        self.assertEqual(ModeControl.radial_selection((1.0, -1.0)), "manual")
-        self.assertEqual(ModeControl.radial_selection((-1.0, -1.0)), "static")
+        self.assertEqual(ModeControl.radial_selection((1.0, 0.0)), "manual")
+        self.assertEqual(ModeControl.radial_selection((0.0, -1.0)), "capture")
+        self.assertEqual(ModeControl.radial_selection((-1.0, 0.0)), "static")
         self.assertIsNone(ModeControl.radial_selection((0.0, 0.0)))
+
+    def test_capture_state_never_enables_output(self):
+        modes = ModeControl("capture")
+
+        self.assertFalse(modes.output_enabled)
+        command = DriveCommand(mode="capture", throttle=1.0, left=1.0, right=1.0)
+        gated = modes.gate_command(command)
+
+        self.assertEqual(gated.mode, "disabled")
+        self.assertEqual(gated.throttle, 0.0)
 
     def test_controller_loss_stops_enabled_detector(self):
         modes = ModeControl("detector")
