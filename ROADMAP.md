@@ -29,7 +29,44 @@ python3 main.py
 `detector.py` remains a compatibility launcher for existing Pi commands, but
 `main.py` is the primary entrypoint from now on.
 
-The terminal dashboard is the main information display. The detector window only shows the camera feed with boxes, dots, and the centerline; it does not show text, and the mask window is disabled.
+The terminal dashboard is the main information display. The detector window is
+text-free: circles represent balls, triangles represent cones, yellow outlines
+represent unknown candidates, arrows show tracked motion, and the cyan line is
+the IMU-adjusted horizon. Dashed outlines are unconfirmed candidates; solid
+outlines have passed temporal confirmation. The mask window remains disabled.
+
+## Pi Dependencies
+
+Use a virtual environment that can see Raspberry Pi OS's camera and OpenCV
+packages, then install the two CircuitPython hardware drivers:
+
+```bash
+sudo apt install -y python3-venv python3-opencv python3-picamera2 python3-evdev i2c-tools
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install adafruit-circuitpython-pca9685 adafruit-circuitpython-bno08x
+```
+
+The BNO085 is expected at `0x4b` and the PCA9685 at `0x40`. Verify both:
+
+```bash
+i2cdetect -y 1
+```
+
+Adafruit recommends a 400 kHz I2C bus for the BNO085 on Raspberry Pi. Add this
+to `/boot/firmware/config.txt` on current Raspberry Pi OS and reboot:
+
+```ini
+dtparam=i2c_arm_baudrate=400000
+```
+
+The runtime retries a failed IMU connection without stopping camera, controller,
+or motor safety handling. `IMU_ROTATION_MODE=game` is the default because its
+yaw is not corrected by the magnetometer: it may drift over a long run, but it
+avoids sudden heading corrections that are harmful to frame-to-frame tracking.
+Set it to `absolute` if field testing shows the magnetometer is stable around
+the drive motors.
 
 Disable the terminal dashboard and use plain telemetry prints:
 
@@ -81,19 +118,51 @@ alias select the initial state, but detector still starts with output disabled.
 Useful tuning variables:
 
 ```bash
-AUTO_CALIBRATE=true
-AUTO_CALIBRATION_INTERVAL=1.0
-AUTO_CALIBRATION_SATURATION_MIN=35
-AUTO_CALIBRATION_VALUE_MIN=70
 PICAMERA2_FLIP_180=true
+OBJECT_SATURATION_MIN=32
+OBJECT_CHROMA_MIN=20
+OBJECT_LOCAL_CHROMA_DELTA=10
+OBJECT_LOCAL_BLUR_SIGMA=9
+OBJECT_VALUE_MIN=35
+OBJECT_VALUE_MAX=255
+OBJECT_MIN_AREA_RATIO=0.00035
+OBJECT_MAX_AREA_RATIO=0.22
+OBJECT_UNCERTAIN_SCORE=0.42
+OBJECT_CERTAIN_SCORE=0.67
+OBJECT_CLASS_MARGIN=0.09
+OBJECT_CERTAIN_MARGIN=0.15
 MIN_BALL_AREA_RATIO=0.004
+MIN_BALL_AREA_TOP_SCALE=0.25
 MAX_BALL_AREA_RATIO=0.15
 MAX_BALL_AREA_TOP_SCALE=1.0
 TUI=true
 TUI_INTERVAL=0.1
-KNOWN_COLOR_HUE_PADDING=12
-KNOWN_COLOR_SATURATION_MIN=45
-KNOWN_COLOR_VALUE_MIN=60
+TRACK_CONFIRM_FRAMES=3
+TRACK_MAX_MISSES=5
+TRACK_MATCH_RADIUS_RATIO=0.14
+TRACK_SCORE_SMOOTHING=0.40
+TRACK_POSITION_SMOOTHING=0.58
+TRACK_VELOCITY_SMOOTHING=0.45
+TRACK_COLOR_WEIGHT=0.20
+TRACK_SIZE_WEIGHT=0.18
+CAMERA_HORIZONTAL_FOV_DEG=66
+CAMERA_VERTICAL_FOV_DEG=41
+IMU_ENABLED=true
+IMU_I2C_ADDRESS=0x4b
+IMU_REPORT_INTERVAL_US=50000
+IMU_ROTATION_MODE=game
+IMU_RECONNECT_INTERVAL=2.0
+IMU_MAX_AGE_SECONDS=0.50
+IMU_TRACK_YAW_SIGN=-1
+IMU_TRACK_PITCH_SIGN=1
+IMU_TRACK_ROLL_SIGN=1
+IMU_TUI_TILT_RANGE_DEG=35
+HORIZON_BASE_Y_RATIO=0.34
+HORIZON_BALL_ALLOWANCE_RATIO=0.035
+HORIZON_CONE_ALLOWANCE_RATIO=0.14
+HORIZON_PITCH_SIGN=1
+HORIZON_ROLL_SIGN=1
+OVERLAY_MOTION_SCALE=3
 TARGET_LOCK_RADIUS_RATIO=0.18
 TARGET_SWITCH_MARGIN=0.18
 TARGET_SWITCH_FRAMES=3
@@ -149,6 +218,21 @@ CONTROLLER_MENU_DEADZONE=0.35
 CONTROLLER_INVERT_Y=true
 ```
 
+Set `HORIZON_BASE_Y_RATIO` while the robot is sitting in its normal level pose;
+the first valid IMU reading becomes the zero attitude applied around that
+baseline. If the horizon moves opposite the floor when the robot pitches or
+rolls, change the corresponding `HORIZON_*_SIGN` between `1` and `-1`. If a
+stationary object's predicted image motion goes opposite its observed motion
+while turning, invert `IMU_TRACK_YAW_SIGN`; pitch and roll tracking have
+equivalent sign controls.
+
+Detection tuning now has three layers. `OBJECT_*` controls broad proposals,
+the score and margin values control ball/cone/unknown classification, and
+`TRACK_*` controls temporal association and when a dashed candidate becomes
+solid. Only solid, currently observed ball tracks can become a new steering
+target. A briefly missed locked track is shown as a dashed prediction while the
+existing drive stabilizer holds its last command briefly.
+
 Each `MOTOR_*_ESC_US` value is one compact `reverse,neutral,forward` triplet
 in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 `THROTTLE_NEUTRAL_US`, and `THROTTLE_FORWARD_US` fallback for that ESC only.
@@ -177,15 +261,25 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 
 - `main.py` owns camera lifecycle, actuator lifecycle, mission state selection,
   visualization, and the state-aware TUI dashboard.
-- `robot/ball_detector.py` owns multicolor ball detection and auto-calibration.
-- `robot/cone_slalom.py` owns cone detection and slalom status.
+- `robot/object_detector.py` generates color-agnostic candidates and scores
+  each one explicitly as ball, cone, or unknown.
+- `robot/object_tracker.py` fuses geometry, hue, size, motion, and
+  roll/pitch/yaw camera movement over time.
+- `robot/imu.py` owns optional BNO085 acquisition and baseline-relative
+  orientation.
+- `robot/horizon.py` combines a configured image horizon with IMU pitch and
+  roll. Ball and cone candidates have separate above-horizon allowances.
+- `robot/overlay.py` owns the text-free solid/dashed shape and motion graphics.
+- `robot/ball_detector.py` remains only as legacy code; `main.py` no longer
+  uses its fixed HSV color profiles or auto-calibration.
+- `robot/cone_slalom.py` supplies the current cone-slalom status summary.
 - `robot/bucket_detection.py`, `robot/rough_section.py`, and
   `robot/hill_climb.py` isolate their future course behaviors from the trial
   detector state.
 - `robot/drive.py`, `robot/actuators.py`, `robot/camera.py`, and
   `robot/dashboard.py` provide shared runtime services.
-- The only enabled mission state is currently `detector`; the TUI visibly shows
-  that state and renders its detector-specific information.
+- The implemented runtime states are `static`, `manual`, and `detector`; future
+  course sections remain isolated modules until their behavior is implemented.
 
 ## Course Roadmap
 

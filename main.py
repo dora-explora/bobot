@@ -8,11 +8,9 @@ import sys
 import traceback
 
 import cv2
-import numpy as np
 
 from robot import config
 from robot.actuators import Pca9685Actuators
-from robot.ball_detector import BallDetector
 from robot.bucket_detection import BucketDetection
 from robot.camera import open_camera
 from robot.cone_slalom import ConeSlalom
@@ -20,10 +18,22 @@ from robot.controller import ControllerInput
 from robot.dashboard import TuiDashboard
 from robot.drive import DriveStabilizer, TargetStabilizer, ball_seeking_command
 from robot.hill_climb import HillClimb
+from robot.horizon import HorizonEstimator
+from robot.imu import BNO085Service
 from robot.mode_control import ModeControl
 from robot.models import DriveCommand, StateResult
+from robot.object_detector import ObjectDetector
+from robot.object_tracker import ObjectTracker
+from robot.overlay import (
+    draw_dashed_circle,
+    draw_dashed_polygon,
+    draw_dashed_triangle,
+    draw_motion_arrow,
+    draw_solid_circle,
+    draw_solid_polygon,
+    draw_solid_triangle,
+)
 from robot.rough_section import RoughSection
-from robot.vision_common import boxes_nearly_duplicate
 
 
 class DetectorState:
@@ -32,32 +42,51 @@ class DetectorState:
     name = "detector"
 
     def __init__(self):
-        self.balls = BallDetector()
-        self.cones = ConeSlalom()
+        self.objects = ObjectDetector()
+        self.tracker = ObjectTracker()
+        self.cone_status = ConeSlalom()
         self.targets = TargetStabilizer()
         self.drive = DriveStabilizer()
         self.last_target_seen = 0.0
 
-    def process(self, frame, now):
+    def process(self, frame, now, attitude=None, horizon=None):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        targets, debug, auto_colors = self.balls.detect(hsv, now)
-        cones = self.cones.detect(hsv)
-        targets = self._remove_cones_from_ball_targets(targets, cones, debug)
-        best_target = self.targets.select(targets, frame.shape[1], frame.shape[0], now, debug)
+        detections, debug = self.objects.detect(frame, hsv, horizon)
+        detections = self.tracker.update(
+            detections,
+            attitude,
+            frame.shape[1],
+            frame.shape[0],
+            now,
+            debug,
+        )
+        targets = [item for item in detections if item.kind == "ball"]
+        cones = [item for item in detections if item.kind == "cone"]
+        unknowns = [item for item in detections if item.kind == "unknown"]
+        confirmed_targets = [target for target in targets if target.certain]
+        best_target = self.targets.select(
+            confirmed_targets,
+            frame.shape[1],
+            frame.shape[0],
+            now,
+            debug,
+        )
         if best_target is not None:
             self.last_target_seen = now
         command = ball_seeking_command(best_target, frame.shape[1], frame.shape[0] * frame.shape[1], self.last_target_seen, now)
         command = self.drive.smooth(command, now, debug)
         debug.cones = len(cones)
-        return StateResult(targets=targets, cones=cones, best_target=best_target, command=command, debug=debug,
-                           auto_color_names=[color["name"] for color in auto_colors], state_lines=self.cones.status_lines(cones))
-
-    @staticmethod
-    def _remove_cones_from_ball_targets(targets, cones, debug):
-        kept = [target for target in targets if not any(boxes_nearly_duplicate(target.box, cone.box) for cone in cones)]
-        debug.rejected_overlap += len(targets) - len(kept)
-        debug.accepted = len(kept)
-        return kept
+        return StateResult(
+            targets=targets,
+            cones=cones,
+            unknowns=unknowns,
+            best_target=best_target,
+            command=command,
+            debug=debug,
+            state_lines=self.cone_status.status_lines(cones),
+            attitude=attitude,
+            horizon=horizon,
+        )
 
 
 class ManualState:
@@ -68,7 +97,7 @@ class ManualState:
     def __init__(self, controller):
         self.controller = controller
 
-    def process(self, _frame, _now):
+    def process(self, _frame, _now, attitude=None, horizon=None):
         left_input, right_input = self.controller.tank_sides()
         left = left_input * config.THROTTLE_LIMIT
         right = right_input * config.THROTTLE_LIMIT
@@ -86,6 +115,8 @@ class ManualState:
                 + " right=" + str(round(right, 3))
                 + " limit=" + str(config.THROTTLE_LIMIT),
             ],
+            attitude=attitude,
+            horizon=horizon,
         )
 
 
@@ -97,12 +128,14 @@ class StaticState:
     def __init__(self, controller):
         self.controller = controller
 
-    def process(self, _frame, _now):
+    def process(self, _frame, _now, attitude=None, horizon=None):
         return StateResult(
             command=DriveCommand(mode="static", reason="static mode"),
             state_lines=self.controller.debug_lines() + [
                 "motors neutral; D-pad up/down adjusts limit; A=manual hold Y=radial menu B=remain static",
             ],
+            attitude=attitude,
+            horizon=horizon,
         )
 
 
@@ -123,22 +156,59 @@ ACTIVE_STATE = config.ROBOT_START_STATE
 def draw_overlay(frame, result):
     center_x = frame.shape[1] // 2
     cv2.line(frame, (center_x, 0), (center_x, frame.shape[0]), (255, 255, 255), 1)
-    for target in result.targets:
-        x, y, width, height = target.box
-        thickness = 4 if target == result.best_target else 2
-        cv2.rectangle(frame, (x, y), (x + width, y + height), target.color, thickness)
-        cv2.circle(frame, (target.center_x, target.center_y), 5, target.color, -1)
-    for cone in result.cones:
-        x, y, width, height = cone.box
-        triangle = np.array([[cone.center_x, y], [x, y + height], [x + width, y + height]], dtype=np.int32)
-        cv2.drawContours(frame, [cone.contour], -1, cone.color, 2)
-        cv2.polylines(frame, [triangle], True, cone.color, 2)
-        cv2.drawMarker(frame, (cone.center_x, cone.center_y), cone.color, markerType=cv2.MARKER_TILTED_CROSS, markerSize=12, thickness=2)
+    if result.horizon is not None:
+        horizon_points = [
+            (0, result.horizon.left_y),
+            (frame.shape[1] - 1, result.horizon.right_y),
+        ]
+        if result.horizon.confident:
+            draw_solid_polygon(frame, horizon_points, (255, 255, 0), 2, closed=False)
+        else:
+            draw_dashed_polygon(frame, horizon_points, (255, 255, 0), 2, closed=False)
+
+    selected_track = getattr(result.best_target, "track_id", 0)
+    for detection in result.targets + result.cones + result.unknowns:
+        x, y, width, height = detection.box
+        selected = selected_track and detection.track_id == selected_track
+        thickness = 4 if selected else 2
+        if detection.kind == "ball" or (
+            detection.kind == "unknown"
+            and detection.ball_score >= detection.cone_score
+        ):
+            draw = draw_solid_circle if detection.certain else draw_dashed_circle
+            draw(
+                frame,
+                (detection.center_x, detection.center_y),
+                detection.radius,
+                detection.color,
+                thickness,
+            )
+        else:
+            triangle = [
+                (detection.center_x, y),
+                (x, y + height),
+                (x + width, y + height),
+            ]
+            draw = draw_solid_triangle if detection.certain else draw_dashed_triangle
+            draw(frame, triangle, detection.color, thickness)
+
+        arrow_end = (
+            int(round(detection.center_x + detection.motion_x * config.OVERLAY_MOTION_SCALE)),
+            int(round(detection.center_y + detection.motion_y * config.OVERLAY_MOTION_SCALE)),
+        )
+        draw_motion_arrow(
+            frame,
+            (detection.center_x, detection.center_y),
+            arrow_end,
+            detection.color,
+            thickness=1,
+        )
 
 
 def print_telemetry(result, mode_control, output_command):
     target = result.best_target
     debug, command = result.debug, result.command
+    attitude = result.attitude
     summary = "target=none" if target is None else "target=" + target.label + " x=" + str(target.center_x) + " y=" + str(target.center_y) + " area=" + str(int(target.area))
     print("Telemetry:", summary, "cones=" + str(debug.cones), "steering=" + str(round(command.steering, 3)),
           "throttle=" + str(round(command.throttle, 3)), "reason=" + command.reason,
@@ -147,7 +217,16 @@ def print_telemetry(result, mode_control, output_command):
           "left=" + str(None if command.left is None else round(command.left, 3)),
           "right=" + str(None if command.right is None else round(command.right, 3)),
           "throttle_limit=" + str(round(config.THROTTLE_LIMIT, 3)),
-          "stable=" + debug.stable_target_label, "priority=" + str(round(debug.priority_score, 3)))
+          "stable=" + debug.stable_target_label, "priority=" + str(round(debug.priority_score, 3)),
+          "imu=" + ("connected" if attitude is not None and attitude.connected else "offline"),
+          "roll=" + _telemetry_angle(attitude, "roll_delta_degrees"),
+          "pitch=" + _telemetry_angle(attitude, "pitch_delta_degrees"),
+          "yaw=" + _telemetry_angle(attitude, "yaw_delta_degrees"))
+
+
+def _telemetry_angle(attitude, attribute):
+    value = None if attitude is None else getattr(attitude, attribute, None)
+    return "n/a" if value is None else str(round(value, 2))
 
 
 def report_fatal_error(error):
@@ -165,7 +244,7 @@ def report_fatal_error(error):
         print("Could not write fatal error log: " + str(log_error), file=sys.stderr, flush=True)
 
 
-def safe_shutdown(actuators, camera, controller, dashboard):
+def safe_shutdown(actuators, camera, controller, dashboard, imu):
     """Neutralize first; no cleanup error may prevent the remaining cleanup."""
     if actuators is not None:
         try:
@@ -181,6 +260,11 @@ def safe_shutdown(actuators, camera, controller, dashboard):
             controller.close()
         except BaseException as error:
             print("Controller shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+    if imu is not None:
+        try:
+            imu.close()
+        except BaseException as error:
+            print("IMU shutdown failed: " + repr(error), file=sys.stderr, flush=True)
     if camera is not None:
         try:
             camera.release()
@@ -199,6 +283,14 @@ def safe_shutdown(actuators, camera, controller, dashboard):
 
 def run():
     controller = ControllerInput()
+    imu = BNO085Service(
+        address=config.IMU_I2C_ADDRESS,
+        report_interval_us=config.IMU_REPORT_INTERVAL_US,
+        rotation_mode=config.IMU_ROTATION_MODE,
+        clock=time.time,
+        auto_connect=config.IMU_ENABLED,
+    )
+    horizon_estimator = HorizonEstimator()
     states = {
         "static": StaticState(controller),
         "detector": DetectorState(),
@@ -210,6 +302,7 @@ def run():
     actuators = None
     last_frame_time = 0.0
     last_telemetry = 0.0
+    last_imu_connect_attempt = time.time()
     fps = 0.0
     try:
         camera = open_camera(config.FRAME_WIDTH, config.FRAME_HEIGHT)
@@ -225,6 +318,28 @@ def run():
             if last_frame_time:
                 fps = 1.0 / max(.001, now - last_frame_time)
             last_frame_time = now
+            attitude = imu.read()
+            imu_needs_reconnect = (
+                not attitude.connected
+                or (
+                    attitude.roll_degrees is None
+                    and "orientation read failed" in attitude.error
+                )
+            )
+            if (
+                config.IMU_ENABLED
+                and imu_needs_reconnect
+                and now - last_imu_connect_attempt >= config.IMU_RECONNECT_INTERVAL
+            ):
+                imu.connect()
+                last_imu_connect_attempt = now
+                attitude = imu.read()
+            horizon = horizon_estimator.estimate(
+                frame.shape[1],
+                frame.shape[0],
+                attitude,
+                now,
+            )
             controller_update = controller.poll()
             if controller_update.throttle_limit_delta:
                 previous_limit = config.THROTTLE_LIMIT
@@ -241,7 +356,7 @@ def run():
                 print("Controller: " + decision.message)
 
             state = states[mode_control.active_state]
-            result = state.process(frame, now)
+            result = state.process(frame, now, attitude, horizon)
             output_command = mode_control.gate_command(result.command, decision.neutralize_this_frame)
             actuators.apply(output_command)
             dashboard.draw(
@@ -266,7 +381,7 @@ def run():
     except BaseException as error:
         report_fatal_error(error)
     finally:
-        safe_shutdown(actuators, camera, controller, dashboard)
+        safe_shutdown(actuators, camera, controller, dashboard, imu)
 
 
 if __name__ == "__main__":

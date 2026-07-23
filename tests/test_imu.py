@@ -26,6 +26,7 @@ def euler_quaternion(roll_degrees, pitch_degrees, yaw_degrees):
 class FakeSensor:
     def __init__(self, quaternion=(0.0, 0.0, 0.0, 1.0)):
         self.quaternion = quaternion
+        self.game_quaternion = quaternion
         self.acceleration = (1.0, 2.0, 3.0)
         self.gyro = (0.1, 0.2, 0.3)
         self.enabled = []
@@ -113,6 +114,20 @@ class BNO085ServiceTests(unittest.TestCase):
             service.reports_enabled,
             ("rotation-vector", "accelerometer", "gyro"),
         )
+
+    def test_game_rotation_mode_reads_game_quaternion(self):
+        sensor = FakeSensor(euler_quaternion(0.0, 0.0, 45.0))
+        sensor.quaternion = euler_quaternion(0.0, 0.0, -90.0)
+        service = BNO085Service(
+            rotation_mode="game",
+            i2c_factory=lambda: object(),
+            sensor_factory=lambda i2c, address: sensor,
+            report_features=(("game-rotation-vector", 1),),
+        )
+
+        snapshot = service.read()
+
+        self.assertAlmostEqual(snapshot.yaw_degrees, 45.0)
 
     def test_unavailable_hardware_returns_status_without_raising(self):
         def unavailable_i2c():

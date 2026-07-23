@@ -15,8 +15,8 @@ DEFAULT_REPORT_INTERVAL_US = 10_000
 class IMUSnapshot:
     """One best-effort sensor reading.
 
-    The timestamp uses the service's monotonic clock. Quaternion-derived angles
-    are degrees; acceleration is m/s^2 and gyro is radians/second.
+    The timestamp uses the service's configured clock. Quaternion-derived
+    angles are degrees; acceleration is m/s^2 and gyro is radians/second.
     """
 
     connected: bool
@@ -84,6 +84,7 @@ class BNO085Service:
         self,
         address: int | None = None,
         report_interval_us: int | None = None,
+        rotation_mode: str = "absolute",
         *,
         i2c_factory: Callable[[], object] | None = None,
         sensor_factory: Callable[[object, int], object] | None = None,
@@ -105,6 +106,9 @@ class BNO085Service:
             raise ValueError("IMU I2C address must be between 0x00 and 0x7F")
         if self.report_interval_us <= 0:
             raise ValueError("IMU report interval must be positive")
+        self.rotation_mode = rotation_mode.lower()
+        if self.rotation_mode not in ("game", "absolute"):
+            raise ValueError("rotation_mode must be game or absolute")
 
         self._i2c_factory = i2c_factory or _default_i2c_factory
         self._sensor_factory = sensor_factory or _default_sensor_factory
@@ -144,7 +148,7 @@ class BNO085Service:
             i2c = self._i2c_factory()
             sensor = self._sensor_factory(i2c, self.address)
             features = (
-                _default_report_features()
+                _default_report_features(self.rotation_mode)
                 if self._report_features is None
                 else self._report_features
             )
@@ -190,7 +194,11 @@ class BNO085Service:
         gyro = None
 
         try:
-            quaternion = self._sensor.quaternion
+            quaternion = (
+                self._sensor.game_quaternion
+                if self.rotation_mode == "game"
+                else self._sensor.quaternion
+            )
             if quaternion is None:
                 raise ValueError("rotation-vector report has no data")
             angles = quaternion_to_euler_degrees(quaternion)
@@ -290,11 +298,16 @@ def _default_sensor_factory(i2c, address):
     return BNO08X_I2C(i2c, address=address)
 
 
-def _default_report_features() -> tuple[tuple[str, int], ...]:
+def _default_report_features(rotation_mode: str) -> tuple[tuple[str, int], ...]:
     import adafruit_bno08x
 
+    rotation_report = (
+        ("game-rotation-vector", "BNO_REPORT_GAME_ROTATION_VECTOR")
+        if rotation_mode == "game"
+        else ("rotation-vector", "BNO_REPORT_ROTATION_VECTOR")
+    )
     names = (
-        ("rotation-vector", "BNO_REPORT_ROTATION_VECTOR"),
+        rotation_report,
         ("accelerometer", "BNO_REPORT_ACCELEROMETER"),
         ("gyro", "BNO_REPORT_GYROSCOPE"),
     )

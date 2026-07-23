@@ -1,7 +1,9 @@
+from dataclasses import replace
+
 import numpy as np
 
 from robot import config
-from robot.models import DriveCommand, VisionTarget
+from robot.models import DriveCommand
 from robot.vision_common import clamp
 
 
@@ -54,6 +56,17 @@ class TargetStabilizer:
     def _find_match(self, targets, frame_width):
         if self.target is None:
             return None
+        target_track_id = getattr(self.target, "track_id", 0)
+        if target_track_id:
+            tracked = next(
+                (
+                    target for target in targets
+                    if getattr(target, "track_id", 0) == target_track_id
+                ),
+                None,
+            )
+            if tracked is not None:
+                return tracked
         radius = max(24.0, frame_width * config.TARGET_LOCK_RADIUS_RATIO)
         candidates = [(np.hypot(target.center_x - self.target.center_x, target.center_y - self.target.center_y), target) for target in targets]
         candidates = [candidate for candidate in candidates if candidate[0] <= radius]
@@ -75,12 +88,14 @@ class TargetStabilizer:
             self.target = target
         else:
             alpha = clamp(config.TARGET_SMOOTHING, 0.0, 1.0)
-            self.target = VisionTarget(target.label,
-                int(round(self.target.center_x * (1 - alpha) + target.center_x * alpha)),
-                int(round(self.target.center_y * (1 - alpha) + target.center_y * alpha)),
-                self.target.area * (1 - alpha) + target.area * alpha,
-                self.target.confidence * (1 - alpha) + target.confidence * alpha,
-                target.box, int(round(self.target.radius * (1 - alpha) + target.radius * alpha)), target.color)
+            self.target = replace(
+                target,
+                center_x=int(round(self.target.center_x * (1 - alpha) + target.center_x * alpha)),
+                center_y=int(round(self.target.center_y * (1 - alpha) + target.center_y * alpha)),
+                area=self.target.area * (1 - alpha) + target.area * alpha,
+                confidence=self.target.confidence * (1 - alpha) + target.confidence * alpha,
+                radius=int(round(self.target.radius * (1 - alpha) + target.radius * alpha)),
+            )
         self.last_seen = now
         self._fill_debug(priority, now, False, debug)
         return self.target
