@@ -73,6 +73,7 @@ class ControllerInputTests(unittest.TestCase):
         self.assertFalse(update.b_pressed)
         self.assertFalse(update.y_pressed)
         self.assertFalse(update.y_released)
+        self.assertEqual(update.throttle_limit_delta, 0)
 
     def test_y_release_is_reported_separately_from_y_press(self):
         controller = controller_with_events([
@@ -83,6 +84,22 @@ class ControllerInputTests(unittest.TestCase):
 
         self.assertFalse(update.y_pressed)
         self.assertTrue(update.y_released)
+
+    def test_dpad_axis_and_buttons_adjust_the_throttle_limit(self):
+        controller = controller_with_events([
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_DPAD_Y_AXIS, value=-1),
+            SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_DPAD_DOWN_BUTTON, value=1),
+        ])
+
+        update = controller.poll()
+
+        self.assertEqual(update.throttle_limit_delta, 0)
+
+        controller.device.events = [
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_DPAD_Y_AXIS, value=-1),
+        ]
+        update = controller.poll()
+        self.assertEqual(update.throttle_limit_delta, 1)
 
     def test_radial_menu_uses_the_most_recently_moved_stick(self):
         controller = controller_with_events([])

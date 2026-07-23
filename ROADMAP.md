@@ -66,7 +66,10 @@ manual tank drive, B enters static mode, and holding Y opens the radial state
 menu. Either stick changes the selection, with the most recently moved stick
 taking priority; releasing Y confirms the selection and B cancels it. Menu
 output is always neutral. The left and right vertical sticks control the
-matching motor sides in manual mode.
+matching motor sides in manual mode. D-pad up/down changes the live global
+throttle limit by `THROTTLE_LIMIT_STEP` (default 5%) without restarting; the
+TUI displays the current limit. Most controllers expose the D-pad as vertical
+axis `17`, but button-code fallbacks are configurable below.
 
 Selecting detector enters it with motor output disabled. Press A once to enable
 detector output; pressing A again enters manual mode. Opening the menu from
@@ -117,6 +120,7 @@ ACTUATOR_WATCHDOG_SECONDS=0.25
 ACTUATOR_STARTUP_TIMEOUT_SECONDS=3.0
 FATAL_ERROR_LOG=/tmp/bobot-fatal.log
 THROTTLE_LIMIT=1.0
+THROTTLE_LIMIT_STEP=0.05
 THROTTLE_MIN_ACTIVE=0.06
 THROTTLE_ALLOW_REVERSE=false
 MAX_TRIAL_THROTTLE=0.10
@@ -137,6 +141,9 @@ CONTROLLER_LEFT_X_AXIS=0
 CONTROLLER_LEFT_Y_AXIS=1
 CONTROLLER_RIGHT_X_AXIS=3
 CONTROLLER_RIGHT_Y_AXIS=4
+CONTROLLER_DPAD_Y_AXIS=17
+CONTROLLER_DPAD_UP_BUTTON=544
+CONTROLLER_DPAD_DOWN_BUTTON=545
 CONTROLLER_DEADZONE=0.10
 CONTROLLER_MENU_DEADZONE=0.35
 CONTROLLER_INVERT_Y=true

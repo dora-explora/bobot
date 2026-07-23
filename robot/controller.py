@@ -12,6 +12,7 @@ class ControllerUpdate:
     b_pressed: bool = False
     y_pressed: bool = False
     y_released: bool = False
+    throttle_limit_delta: int = 0
     controller_lost: bool = False
 
 
@@ -121,8 +122,17 @@ class ControllerInput:
                     update.b_pressed = True
                 elif event.code == config.CONTROLLER_Y_BUTTON:
                     update.y_pressed = True
+                elif event.code == config.CONTROLLER_DPAD_UP_BUTTON:
+                    update.throttle_limit_delta += 1
+                elif event.code == config.CONTROLLER_DPAD_DOWN_BUTTON:
+                    update.throttle_limit_delta -= 1
             elif event.type == self.ecodes.EV_ABS:
                 self.axis_values[event.code] = event.value
+                if event.code == config.CONTROLLER_DPAD_Y_AXIS:
+                    if event.value < 0:
+                        update.throttle_limit_delta += 1
+                    elif event.value > 0:
+                        update.throttle_limit_delta -= 1
                 stick = self._menu_stick_for_axis(event.code)
                 if stick is not None:
                     self._menu_input_sequence += 1
@@ -174,6 +184,8 @@ class ControllerInput:
             "menu source=" + menu_source + " x=" + str(round(menu_x, 3)) + " y=" + str(round(menu_y, 3)),
             "menu left x=" + str(round(left_menu_x, 3)) + " y=" + str(round(left_menu_y, 3))
             + " right x=" + str(round(right_menu_x, 3)) + " y=" + str(round(right_menu_y, 3)),
+            "D-pad up/down adjusts throttle limit by " + str(config.THROTTLE_LIMIT_STEP)
+            + " current=" + str(round(config.THROTTLE_LIMIT, 3)),
             "axes Lx/Ly/Rx/Ry=" + "/".join(str(code) for code in self._stick_axes())
             + " buttons A/B/Y=" + "/".join(str(code) for code in (
                 config.CONTROLLER_A_BUTTON,
@@ -182,6 +194,9 @@ class ControllerInput:
             ))
             + " deadzone=" + str(config.CONTROLLER_DEADZONE)
             + " menu_deadzone=" + str(config.CONTROLLER_MENU_DEADZONE),
+            "D-pad axis=" + str(config.CONTROLLER_DPAD_Y_AXIS)
+            + " buttons up/down=" + str(config.CONTROLLER_DPAD_UP_BUTTON)
+            + "/" + str(config.CONTROLLER_DPAD_DOWN_BUTTON),
             "detected axes=" + self._code_list(self.supported_axis_codes, self._axis_name),
             "detected keys=" + self._code_list(self.supported_key_codes, self._key_name),
         ] + (["error=" + self.error] if self.error else [])

@@ -65,12 +65,13 @@ class TuiDashboard:
             "Robot Code TUI", "==============", "",
             "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
             + "  available=static,detector,manual",
-            "controls: A=manual  B=static/cancel menu  hold Y=radial menu",
+            "controls: A=manual  B=static/cancel menu  hold Y=radial menu  D-pad up/down=limit",
             "last_action=" + mode_control.last_action, "",
             "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
             + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
             "actuators=" + str(config.ENABLE_ACTUATORS)
-            + " throttle_limit=" + str(config.THROTTLE_LIMIT)
+            + " throttle_limit=" + str(round(config.THROTTLE_LIMIT * 100.0)) + "%"
+            + " step=" + str(round(config.THROTTLE_LIMIT_STEP * 100.0)) + "%"
             + " ctrl-c=neutralize and exit",
             "output_gate=" + mode_control.output_status, "",
         ]

@@ -101,7 +101,7 @@ class StaticState:
         return StateResult(
             command=DriveCommand(mode="static", reason="static mode"),
             state_lines=self.controller.debug_lines() + [
-                "motors neutral; A=manual hold Y=radial menu B=remain static",
+                "motors neutral; D-pad up/down adjusts limit; A=manual hold Y=radial menu B=remain static",
             ],
         )
 
@@ -146,6 +146,7 @@ def print_telemetry(result, mode_control, output_command):
           "output_mode=" + output_command.mode, "output_reason=" + output_command.reason,
           "left=" + str(None if command.left is None else round(command.left, 3)),
           "right=" + str(None if command.right is None else round(command.right, 3)),
+          "throttle_limit=" + str(round(config.THROTTLE_LIMIT, 3)),
           "stable=" + debug.stable_target_label, "priority=" + str(round(debug.priority_score, 3)))
 
 
@@ -225,6 +226,15 @@ def run():
                 fps = 1.0 / max(.001, now - last_frame_time)
             last_frame_time = now
             controller_update = controller.poll()
+            if controller_update.throttle_limit_delta:
+                previous_limit = config.THROTTLE_LIMIT
+                current_limit = config.adjust_throttle_limit(controller_update.throttle_limit_delta)
+                if current_limit != previous_limit:
+                    direction = "increased" if current_limit > previous_limit else "decreased"
+                    mode_control.last_action = (
+                        "D-pad " + direction + " throttle limit to "
+                        + str(round(current_limit * 100.0)) + "%"
+                    )
             menu_stick, menu_stick_source = controller.menu_stick()
             decision = mode_control.update(controller_update, menu_stick, menu_stick_source)
             if decision.message and not dashboard.enabled:
