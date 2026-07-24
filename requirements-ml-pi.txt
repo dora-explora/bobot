@@ -1,0 +1,2 @@
+# ML detector only. The classical backend does not import this package.
+onnxruntime>=1.20,<2

@@ -1,0 +1,6 @@
+# Install a platform-appropriate PyTorch build first if using GPU acceleration.
+ultralytics>=8.4,<9
+onnx>=1.17,<2
+onnxslim>=0.1.80,<1
+opencv-python>=4.10,<5
+PyYAML>=6,<7
