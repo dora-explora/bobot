@@ -64,6 +64,14 @@ class DriveCommand:
 
 @dataclass
 class DetectionDebug:
+    vision_backend: str = "classical"
+    vision_status: str = "ready"
+    vision_error: str = ""
+    inference_latency_ms: float = 0.0
+    inference_fps: float = 0.0
+    inference_age_seconds: float = 0.0
+    inference_dropped_frames: int = 0
+    inference_sequence: int = 0
     active_colors: int = 0
     masks_checked: int = 0
     contours_seen: int = 0

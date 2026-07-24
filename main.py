@@ -21,6 +21,7 @@ from robot.drive import DriveStabilizer, TargetStabilizer, ball_seeking_command
 from robot.hill_climb import HillClimb
 from robot.horizon import HorizonEstimator
 from robot.imu import BNO085Service
+from robot.ml_detector import AsyncMLDetector
 from robot.mode_control import ModeControl
 from robot.models import DriveCommand, StateResult
 from robot.object_detector import ObjectDetector
@@ -43,7 +44,9 @@ class DetectorState:
     name = "detector"
 
     def __init__(self):
-        self.objects = ObjectDetector()
+        self.objects = ObjectDetector() if config.VISION_BACKEND == "classical" else None
+        self.ml_worker = AsyncMLDetector() if config.VISION_BACKEND == "ml" else None
+        self.last_ml_sequence = 0
         self.tracker = ObjectTracker()
         self.cone_status = ConeSlalom()
         self.targets = TargetStabilizer()
@@ -58,16 +61,24 @@ class DetectorState:
         horizon=None,
         controller_update=None,
     ):
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        detections, debug = self.objects.detect(frame, hsv, horizon)
-        detections = self.tracker.update(
-            detections,
-            attitude,
-            frame.shape[1],
-            frame.shape[0],
-            now,
-            debug,
-        )
+        if self.ml_worker is None:
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            detections, debug = self.objects.detect(frame, hsv, horizon)
+            detections = self.tracker.update(
+                detections,
+                attitude,
+                frame.shape[1],
+                frame.shape[0],
+                now,
+                debug,
+            )
+        else:
+            detections, debug = self._ml_detections(
+                frame,
+                now,
+                attitude,
+                horizon,
+            )
         targets = [item for item in detections if item.kind == "ball"]
         cones = [item for item in detections if item.kind == "cone"]
         unknowns = [item for item in detections if item.kind == "unknown"]
@@ -95,6 +106,77 @@ class DetectorState:
             attitude=attitude,
             horizon=horizon,
         )
+
+    def close(self):
+        if self.ml_worker is not None:
+            self.ml_worker.close()
+
+    def _ml_detections(self, frame, now, attitude, horizon):
+        inference = self.ml_worker.poll_after(self.last_ml_sequence)
+        if inference is not None:
+            self.last_ml_sequence = inference.sequence
+        self.ml_worker.submit(frame, now, attitude, horizon)
+        status = self.ml_worker.status(now)
+
+        if (
+            inference is not None
+            and not inference.error
+            and now - inference.captured_at <= config.ML_MAX_RESULT_AGE
+        ):
+            debug = inference.debug
+            compensated, compensation = self.tracker.compensate_detections(
+                inference.detections,
+                inference.attitude,
+                attitude,
+                frame.shape[1],
+                frame.shape[0],
+            )
+            detections = self.tracker.update(
+                compensated,
+                attitude,
+                frame.shape[1],
+                frame.shape[0],
+                now,
+                debug,
+            )
+            debug.imu_compensation_x += compensation[0]
+            debug.imu_compensation_y += compensation[1]
+            debug.imu_compensation_roll += compensation[2]
+        else:
+            debug = DetectionDebug(vision_backend="ml")
+            if inference is not None and inference.error:
+                debug.vision_status = "error"
+                debug.vision_error = inference.error
+            elif inference is not None:
+                debug.vision_status = "stale"
+                debug.vision_error = (
+                    "discarded result age "
+                    + str(round(now - inference.captured_at, 3))
+                    + "s"
+                )
+            elif not status["ready"]:
+                debug.vision_status = "loading" if not status["error"] else "error"
+                debug.vision_error = status["error"]
+            else:
+                debug.vision_status = "waiting"
+            detections = self.tracker.predict_only(
+                attitude,
+                frame.shape[1],
+                frame.shape[0],
+                now,
+                debug,
+            )
+
+        debug.vision_backend = "ml"
+        if status["error"] and not debug.vision_error:
+            debug.vision_error = status["error"]
+            debug.vision_status = "error"
+        debug.inference_latency_ms = status["latency_ms"]
+        debug.inference_fps = status["inference_fps"]
+        debug.inference_age_seconds = status["age_seconds"]
+        debug.inference_dropped_frames = status["dropped_frames"]
+        debug.inference_sequence = status["sequence"]
+        return detections, debug
 
 
 class ManualState:
@@ -267,7 +349,7 @@ def report_fatal_error(error):
         print("Could not write fatal error log: " + str(log_error), file=sys.stderr, flush=True)
 
 
-def safe_shutdown(actuators, camera, controller, dashboard, imu):
+def safe_shutdown(actuators, camera, controller, dashboard, imu, states=None):
     """Neutralize first; no cleanup error may prevent the remaining cleanup."""
     if actuators is not None:
         try:
@@ -283,6 +365,15 @@ def safe_shutdown(actuators, camera, controller, dashboard, imu):
             controller.close()
         except BaseException as error:
             print("Controller shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+    if states is not None:
+        for state in states.values():
+            close = getattr(state, "close", None)
+            if close is None:
+                continue
+            try:
+                close()
+            except BaseException as error:
+                print("State shutdown failed: " + repr(error), file=sys.stderr, flush=True)
     if imu is not None:
         try:
             imu.close()
@@ -411,7 +502,7 @@ def run():
     except BaseException as error:
         report_fatal_error(error)
     finally:
-        safe_shutdown(actuators, camera, controller, dashboard, imu)
+        safe_shutdown(actuators, camera, controller, dashboard, imu, states)
 
 
 if __name__ == "__main__":

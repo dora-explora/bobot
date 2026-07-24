@@ -129,6 +129,36 @@ OBJECT_CERTAIN_SCORE = env_float("OBJECT_CERTAIN_SCORE", "0.67")
 OBJECT_CLASS_MARGIN = env_float("OBJECT_CLASS_MARGIN", "0.09")
 OBJECT_CERTAIN_MARGIN = env_float("OBJECT_CERTAIN_MARGIN", "0.15")
 
+VISION_BACKEND = os.environ.get("VISION_BACKEND", "classical").lower()
+if VISION_BACKEND not in ("classical", "ml"):
+    raise ValueError("VISION_BACKEND must be classical or ml")
+ML_MODEL_PATH = os.environ.get("ML_MODEL_PATH", "models/ball_cone.onnx")
+ML_MODEL_MANIFEST = os.environ.get("ML_MODEL_MANIFEST", "models/ball_cone.json")
+ML_VERIFY_MODEL_HASH = env_bool("ML_VERIFY_MODEL_HASH", "true")
+ML_BALL_CONFIDENCE = env_float("ML_BALL_CONFIDENCE", "0.35")
+ML_CONE_CONFIDENCE = env_float("ML_CONE_CONFIDENCE", "0.35")
+ML_CERTAIN_CONFIDENCE = env_float("ML_CERTAIN_CONFIDENCE", "0.55")
+ML_MIN_BOX_AREA_RATIO = env_float("ML_MIN_BOX_AREA_RATIO", "0.00002")
+ML_MAX_BOX_AREA_RATIO = env_float("ML_MAX_BOX_AREA_RATIO", "0.45")
+ML_MAX_DETECTIONS = env_int("ML_MAX_DETECTIONS", "100")
+ML_INTRA_THREADS = env_int("ML_INTRA_THREADS", "4")
+ML_INTER_THREADS = env_int("ML_INTER_THREADS", "1")
+ML_MAX_RESULT_AGE = env_float("ML_MAX_RESULT_AGE", "0.75")
+if not 0.0 <= ML_BALL_CONFIDENCE <= 1.0:
+    raise ValueError("ML_BALL_CONFIDENCE must be between 0.0 and 1.0")
+if not 0.0 <= ML_CONE_CONFIDENCE <= 1.0:
+    raise ValueError("ML_CONE_CONFIDENCE must be between 0.0 and 1.0")
+if not 0.0 <= ML_CERTAIN_CONFIDENCE <= 1.0:
+    raise ValueError("ML_CERTAIN_CONFIDENCE must be between 0.0 and 1.0")
+if not 0.0 <= ML_MIN_BOX_AREA_RATIO < ML_MAX_BOX_AREA_RATIO <= 1.0:
+    raise ValueError("ML box area ratios must satisfy 0 <= minimum < maximum <= 1")
+if ML_MAX_DETECTIONS <= 0:
+    raise ValueError("ML_MAX_DETECTIONS must be positive")
+if ML_INTRA_THREADS <= 0 or ML_INTER_THREADS <= 0:
+    raise ValueError("ML thread counts must be positive")
+if ML_MAX_RESULT_AGE <= 0.0:
+    raise ValueError("ML_MAX_RESULT_AGE must be positive")
+
 TARGET_DISTANCE_WEIGHT = env_float("TARGET_DISTANCE_WEIGHT", "0.75")
 TARGET_CLUSTER_WEIGHT = env_float("TARGET_CLUSTER_WEIGHT", "0.25")
 TARGET_AREA_WEIGHT = env_float("TARGET_AREA_WEIGHT", "0.08")

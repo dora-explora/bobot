@@ -316,7 +316,15 @@ class TuiDashboard:
         debug = result.debug
         lines = [
             "",
-            "[Vision] proposals=" + str(debug.candidate_count)
+            "[Vision] backend=" + debug.vision_backend
+            + " status=" + debug.vision_status
+            + (" error=" + debug.vision_error if debug.vision_error else ""),
+            "inference=" + str(round(debug.inference_latency_ms, 1)) + "ms"
+            + " rate=" + str(round(debug.inference_fps, 1)) + "Hz"
+            + " age=" + str(round(debug.inference_age_seconds, 3)) + "s"
+            + " dropped=" + str(debug.inference_dropped_frames)
+            + " sequence=" + str(debug.inference_sequence),
+            "proposals=" + str(debug.candidate_count)
             + " contours=" + str(debug.contours_seen)
             + " duplicate=" + str(debug.rejected_overlap)
             + " tracked=" + str(debug.tracked_count)

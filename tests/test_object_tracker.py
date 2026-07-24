@@ -136,6 +136,42 @@ class ObjectTrackerTests(unittest.TestCase):
         self.assertFalse(predicted[0].certain)
         self.assertEqual(debug.predicted_count, 1)
 
+    def test_async_prediction_does_not_consume_miss_allowance(self):
+        tracker = ObjectTracker()
+        tracker.update(
+            [ball(320, 300)],
+            attitude(0.0, 1.0),
+            640,
+            480,
+            1.0,
+            DetectionDebug(),
+        )
+
+        predicted = tracker.predict_only(
+            attitude(2.0, 1.1),
+            640,
+            480,
+            1.1,
+            DetectionDebug(),
+        )
+
+        self.assertEqual(len(predicted), 1)
+        self.assertTrue(predicted[0].predicted)
+        self.assertEqual(tracker.tracks[0].misses, 0)
+
+    def test_delayed_detection_is_compensated_to_current_attitude(self):
+        detections, motion = ObjectTracker.compensate_detections(
+            [ball(320, 300)],
+            attitude(0.0, 1.0),
+            attitude(12.0, 1.2),
+            640,
+            480,
+        )
+
+        self.assertAlmostEqual(motion[0], -116.36, delta=1.0)
+        self.assertEqual(detections[0].center_x, 204)
+        self.assertEqual(detections[0].box[0], 184)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -113,6 +113,91 @@ class ObjectTracker:
         debug.cones = sum(item.kind == "cone" for item in updated)
         return updated
 
+    def predict_only(self, attitude, frame_width, frame_height, now, debug):
+        """Advance tracks between async inference results without counting misses."""
+        camera_dx, camera_dy, camera_roll = self._camera_motion(
+            attitude,
+            frame_width,
+            frame_height,
+        )
+        debug.imu_compensation_x = camera_dx
+        debug.imu_compensation_y = camera_dy
+        debug.imu_compensation_roll = camera_roll
+        predicted = []
+        for track in self.tracks:
+            track.center_x, track.center_y = self._predict(
+                track,
+                camera_dx,
+                camera_dy,
+                camera_roll,
+                frame_width,
+                frame_height,
+                now,
+            )
+            track.last_time = now
+            if track.last_detection is not None:
+                predicted.append(
+                    self._predicted_detection(track, "awaiting next inference result")
+                )
+        debug.tracked_count = len(self.tracks)
+        debug.predicted_count = len(predicted)
+        debug.unknown_count = sum(item.kind == "unknown" for item in predicted)
+        debug.uncertain_count = sum(item.kind != "unknown" for item in predicted)
+        debug.certain_count = 0
+        debug.accepted = sum(item.kind == "ball" for item in predicted)
+        debug.cones = sum(item.kind == "cone" for item in predicted)
+        return predicted
+
+    @classmethod
+    def compensate_detections(
+        cls,
+        detections,
+        source_attitude,
+        current_attitude,
+        frame_width,
+        frame_height,
+    ):
+        """Transform detections from their capture attitude into the current frame."""
+        motion = cls._motion_between_attitudes(
+            source_attitude,
+            current_attitude,
+            frame_width,
+            frame_height,
+        )
+        camera_dx, camera_dy, camera_roll = motion
+        if motion == (0.0, 0.0, 0.0):
+            return detections, motion
+        center_x, center_y = frame_width / 2.0, frame_height / 2.0
+        angle = math.radians(camera_roll)
+        compensated = []
+        for detection in detections:
+            relative_x = detection.center_x - center_x
+            relative_y = detection.center_y - center_y
+            transformed_x = (
+                center_x
+                + relative_x * math.cos(angle)
+                - relative_y * math.sin(angle)
+                + camera_dx
+            )
+            transformed_y = (
+                center_y
+                + relative_x * math.sin(angle)
+                + relative_y * math.cos(angle)
+                + camera_dy
+            )
+            shift_x = int(round(transformed_x - detection.center_x))
+            shift_y = int(round(transformed_y - detection.center_y))
+            x, y, width, height = detection.box
+            compensated.append(
+                replace(
+                    detection,
+                    center_x=int(round(transformed_x)),
+                    center_y=int(round(transformed_y)),
+                    box=(x + shift_x, y + shift_y, width, height),
+                )
+            )
+        return compensated, motion
+
     def _assign(self, detections, predictions, frame_width):
         maximum_distance = max(30.0, frame_width * config.TRACK_MATCH_RADIUS_RATIO)
         pairs = []
@@ -199,6 +284,8 @@ class ObjectTracker:
     def _tracked_kind(track, detection):
         if detection.rejection_reason.startswith("above ") or "area implausible" in detection.rejection_reason:
             return "unknown"
+        if detection.kind != "unknown":
+            return detection.kind
         score = max(track.ball_score, track.cone_score)
         margin = abs(track.ball_score - track.cone_score)
         if score < config.OBJECT_UNCERTAIN_SCORE or margin < config.OBJECT_CLASS_MARGIN:
@@ -213,7 +300,7 @@ class ObjectTracker:
             not force_uncertain
             and track.kind != "unknown"
             and track.hits >= config.TRACK_CONFIRM_FRAMES
-            and score >= config.OBJECT_CERTAIN_SCORE
+            and (detection.certain or score >= config.OBJECT_CERTAIN_SCORE)
             and margin >= config.OBJECT_CERTAIN_MARGIN
         )
         color = (
@@ -266,7 +353,7 @@ class ObjectTracker:
         )
 
     @staticmethod
-    def _predicted_detection(track):
+    def _predicted_detection(track, reason=None):
         previous = track.last_detection
         shift_x = int(round(track.center_x - previous.center_x))
         shift_y = int(round(track.center_y - previous.center_y))
@@ -281,7 +368,7 @@ class ObjectTracker:
             track_hits=track.hits,
             motion_x=track.velocity_x,
             motion_y=track.velocity_y,
-            rejection_reason="track prediction after miss " + str(track.misses),
+            rejection_reason=reason or "track prediction after miss " + str(track.misses),
         )
 
     def _camera_motion(self, attitude, frame_width, frame_height):
@@ -297,19 +384,33 @@ class ObjectTracker:
         if self.last_attitude is None:
             self.last_attitude = attitude
             return 0.0, 0.0, 0.0
-        yaw_delta = wrapped_angle_delta(
-            attitude.yaw_degrees,
-            self.last_attitude.yaw_degrees,
-        )
-        pitch_delta = wrapped_angle_delta(
-            attitude.pitch_degrees,
-            self.last_attitude.pitch_degrees,
-        )
-        roll_delta = wrapped_angle_delta(
-            attitude.roll_degrees,
-            self.last_attitude.roll_degrees,
+        motion = self._motion_between_attitudes(
+            self.last_attitude,
+            attitude,
+            frame_width,
+            frame_height,
         )
         self.last_attitude = attitude
+        return motion
+
+    @staticmethod
+    def _motion_between_attitudes(previous, current, frame_width, frame_height):
+        if (
+            previous is None
+            or current is None
+            or not previous.connected
+            or not current.connected
+            or previous.yaw_degrees is None
+            or previous.pitch_degrees is None
+            or previous.roll_degrees is None
+            or current.yaw_degrees is None
+            or current.pitch_degrees is None
+            or current.roll_degrees is None
+        ):
+            return 0.0, 0.0, 0.0
+        yaw_delta = wrapped_angle_delta(current.yaw_degrees, previous.yaw_degrees)
+        pitch_delta = wrapped_angle_delta(current.pitch_degrees, previous.pitch_degrees)
+        roll_delta = wrapped_angle_delta(current.roll_degrees, previous.roll_degrees)
         return (
             yaw_delta * frame_width / max(1.0, config.CAMERA_HORIZONTAL_FOV_DEG)
             * config.IMU_TRACK_YAW_SIGN,
