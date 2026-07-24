@@ -35,6 +35,11 @@ represent unknown candidates, arrows show tracked motion, and the cyan line is
 the IMU-adjusted horizon. Dashed outlines are unconfirmed candidates; solid
 outlines have passed temporal confirmation. The mask window remains disabled.
 
+The motor-neutral `capture` state saves corrected, overlay-free frames for the
+ball/cone ML dataset. Select it by holding Y, pointing either stick down, and
+releasing Y. X takes one snapshot. See `ML_TRAINING.md` for annotation,
+training, evaluation, deployment, and rollback.
+
 ## Pi Dependencies
 
 Use a virtual environment that can see Raspberry Pi OS's camera and OpenCV
@@ -46,6 +51,12 @@ python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install adafruit-circuitpython-pca9685 adafruit-circuitpython-bno08x
+```
+
+The optional ML detector adds only ONNX Runtime on the Pi:
+
+```bash
+python -m pip install -r requirements-ml-pi.txt
 ```
 
 The BNO085 is expected at `0x4b` and the PCA9685 at `0x40`. Verify both:
@@ -101,12 +112,13 @@ sudo apt install -y python3-evdev
 `main.py` starts in static mode, which keeps every motor neutral. A enters
 manual tank drive, B enters static mode, and holding Y opens the radial state
 menu. Either stick changes the selection, with the most recently moved stick
-taking priority; releasing Y confirms the selection and B cancels it. Menu
-output is always neutral. The left and right vertical sticks control the
-matching motor sides in manual mode. D-pad up/down changes the live global
-throttle limit by `THROTTLE_LIMIT_STEP` (default 5%) without restarting; the
-TUI displays the current limit. Most controllers expose the D-pad as vertical
-axis `17`, but button-code fallbacks are configurable below.
+taking priority; releasing Y confirms the selection and B cancels it. Menu and
+capture output are always neutral. X saves a frame only while capture is
+active. The left and right vertical sticks control the matching motor sides in
+manual mode. D-pad up/down changes the live global throttle limit by
+`THROTTLE_LIMIT_STEP` (default 5%) without restarting; the TUI displays the
+current limit. Most controllers expose the D-pad as vertical axis `17`, but
+button-code fallbacks are configurable below.
 
 Selecting detector enters it with motor output disabled. Press A once to enable
 detector output; pressing A again enters manual mode. Opening the menu from
@@ -206,6 +218,7 @@ CONTROLLER_DEVICE=auto
 CONTROLLER_A_BUTTON=304
 CONTROLLER_B_BUTTON=305
 CONTROLLER_Y_BUTTON=307
+CONTROLLER_CAPTURE_BUTTON=308
 CONTROLLER_LEFT_X_AXIS=0
 CONTROLLER_LEFT_Y_AXIS=1
 CONTROLLER_RIGHT_X_AXIS=3
@@ -216,6 +229,23 @@ CONTROLLER_DPAD_DOWN_BUTTON=545
 CONTROLLER_DEADZONE=0.10
 CONTROLLER_MENU_DEADZONE=0.35
 CONTROLLER_INVERT_Y=true
+CAPTURE_ROOT=datasets/captures
+CAPTURE_SESSION=
+CAPTURE_JPEG_QUALITY=95
+CAPTURE_MIN_INTERVAL=0.20
+VISION_BACKEND=classical
+ML_MODEL_PATH=models/ball_cone.onnx
+ML_MODEL_MANIFEST=models/ball_cone.json
+ML_VERIFY_MODEL_HASH=true
+ML_BALL_CONFIDENCE=0.35
+ML_CONE_CONFIDENCE=0.35
+ML_CERTAIN_CONFIDENCE=0.55
+ML_MIN_BOX_AREA_RATIO=0.00002
+ML_MAX_BOX_AREA_RATIO=0.45
+ML_MAX_DETECTIONS=100
+ML_INTRA_THREADS=4
+ML_INTER_THREADS=1
+ML_MAX_RESULT_AGE=0.75
 ```
 
 Set `HORIZON_BASE_Y_RATIO` while the robot is sitting in its normal level pose;
@@ -226,10 +256,12 @@ stationary object's predicted image motion goes opposite its observed motion
 while turning, invert `IMU_TRACK_YAW_SIGN`; pitch and roll tracking have
 equivalent sign controls.
 
-Detection tuning now has three layers. `OBJECT_*` controls broad proposals,
-the score and margin values control ball/cone/unknown classification, and
-`TRACK_*` controls temporal association and when a dashed candidate becomes
-solid. Only solid, currently observed ball tracks can become a new steering
+With `VISION_BACKEND=classical`, detection tuning has three layers.
+`OBJECT_*` controls broad proposals, the score and margin values control
+ball/cone/unknown classification, and `TRACK_*` controls temporal association.
+With `VISION_BACKEND=ml`, `ML_*_CONFIDENCE` controls model acceptance while the
+same tracker, IMU compensation, horizon, priority, and drive logic remains in
+use. Only solid, currently observed ball tracks can become a new steering
 target. A briefly missed locked track is shown as a dashed prediction while the
 existing drive stabilizer holds its last command briefly.
 
@@ -263,8 +295,11 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
   visualization, and the state-aware TUI dashboard.
 - `robot/object_detector.py` generates color-agnostic candidates and scores
   each one explicitly as ball, cone, or unknown.
+- `robot/ml_detector.py` provides opt-in asynchronous end-to-end ONNX ball/cone
+  inference while keeping model latency out of the camera and control loop.
 - `robot/object_tracker.py` fuses geometry, hue, size, motion, and
   roll/pitch/yaw camera movement over time.
+- `robot/capture_state.py` owns the motor-neutral dataset capture state.
 - `robot/imu.py` owns optional BNO085 acquisition and baseline-relative
   orientation.
 - `robot/horizon.py` combines a configured image horizon with IMU pitch and
