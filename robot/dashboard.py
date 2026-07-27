@@ -35,7 +35,18 @@ class TuiDashboard:
         self.curses.endwin()
         self.enabled = False
 
-    def draw(self, frame, mode_control, result, output_command, actuators, controller_lines, now, fps):
+    def draw(
+        self,
+        frame,
+        mode_control,
+        result,
+        output_command,
+        actuators,
+        controller_lines,
+        now,
+        fps,
+        stability=None,
+    ):
         if not self.enabled or now - self.last_draw < config.TUI_INTERVAL:
             return
         self.last_draw = now
@@ -50,6 +61,7 @@ class TuiDashboard:
             fps,
             width,
             height,
+            stability,
         )
         self.screen.erase()
         for index, line in enumerate(lines[:height - 1]):
@@ -70,6 +82,7 @@ class TuiDashboard:
         fps,
         width,
         height=None,
+        stability=None,
     ):
         state_name = mode_control.active_state
         target, debug, command = result.best_target, result.debug, result.command
@@ -79,7 +92,7 @@ class TuiDashboard:
                 "Robot Code TUI",
                 "[State] active=" + state_name + " menu=" + str(mode_control.menu_active)
                 + " available=static,detector,manual,capture",
-                "controls A=manual B=static/cancel hold-Y=menu X=capture D-pad=limit",
+                "controls A=manual B=static hold-Y=menu X=capture D-pad=limit RB=stability",
                 "last_action=" + mode_control.last_action,
                 "[Status] camera=" + config.CAMERA_BACKEND
                 + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
@@ -96,7 +109,7 @@ class TuiDashboard:
                 "Robot Code TUI", "==============", "",
                 "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
                 + "  available=static,detector,manual,capture",
-                "controls: A=manual  B=static/cancel  hold Y=radial menu  X=capture  D-pad=limit",
+                "controls: A=manual B=static hold Y=menu X=capture D-pad=limit RB=stability",
                 "last_action=" + mode_control.last_action, "",
                 "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
                 + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
@@ -106,6 +119,9 @@ class TuiDashboard:
                 + " ctrl-c=neutralize and exit",
                 "output_gate=" + mode_control.output_status, "",
             ]
+
+        lines.extend(self._stability_lines(stability, compact))
+        lines.append("")
 
         if mode_control.menu_active:
             lines.extend(["[Radial Menu]"])
@@ -184,6 +200,68 @@ class TuiDashboard:
                           + " sat>=" + str(config.CONE_SATURATION_MIN)
                           + " value=" + str(config.CONE_VALUE_MIN) + "-" + str(config.CONE_VALUE_MAX)])
         return lines
+
+    @staticmethod
+    def _stability_lines(stability, compact=False):
+        if stability is None:
+            return ["[Stability] unavailable"]
+
+        def angle(value):
+            return "n/a" if value is None else str(round(value, 2)) + "deg"
+
+        heading = (
+            "[Stability] washboard="
+            + stability.status.upper()
+            + " source="
+            + stability.source
+            + " poll="
+            + str(stability.poll_hz)
+            + "Hz"
+        )
+        score = (
+            "tilt="
+            + angle(stability.current_tilt_degrees)
+            + " samples="
+            + str(stability.sample_count)
+            + " RMS="
+            + str(round(stability.rms_tilt_degrees, 3))
+            + "deg score="
+            + str(round(stability.score_points, 3))
+            + "pt"
+        )
+        if compact:
+            return [
+                heading,
+                score
+                + " elapsed="
+                + str(round(stability.elapsed_seconds, 2))
+                + "s"
+                + (" error=" + stability.error if stability.error else ""),
+            ]
+        log_status = (
+            stability.log_path
+            if stability.log_path
+            else "enabled; waiting for next session"
+            if stability.log_enabled
+            else "disabled"
+        )
+        return [
+            heading,
+            "roll="
+            + angle(stability.current_roll_degrees)
+            + " pitch="
+            + angle(stability.current_pitch_degrees)
+            + " "
+            + score,
+            "elapsed="
+            + str(round(stability.elapsed_seconds, 2))
+            + "s log="
+            + log_status
+            + " button="
+            + str(config.CONTROLLER_STABILITY_BUTTON)
+            + " (start/reset or finalize)"
+            + (" error=" + stability.error if stability.error else ""),
+        ]
 
     @classmethod
     def _imu_lines(cls, attitude, horizon, terminal_width, compact=False):

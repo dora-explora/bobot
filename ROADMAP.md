@@ -79,6 +79,12 @@ avoids sudden heading corrections that are harmful to frame-to-frame tracking.
 Set it to `absolute` if field testing shows the magnetometer is stable around
 the drive motors.
 
+Washboard stability scoring is independent of drive mode. Press the configured
+stability button once at the washboard entrance to reset/start and press it
+again after leaving to finalize. The default is Linux evdev button `311`
+(usually the right bumper). A future `washboard` or active `rough_section`
+runtime state starts and stops the same scorer automatically.
+
 Disable the terminal dashboard and use plain telemetry prints:
 
 ```bash
@@ -165,6 +171,9 @@ IMU_REPORT_INTERVAL_US=50000
 IMU_ROTATION_MODE=game
 IMU_RECONNECT_INTERVAL=2.0
 IMU_MAX_AGE_SECONDS=0.50
+STABILITY_POLL_HZ=20.0
+STABILITY_LOG_ENABLED=false
+STABILITY_LOG_DIR=logs/stability
 IMU_TRACK_YAW_SIGN=-1
 IMU_TRACK_PITCH_SIGN=1
 IMU_TRACK_ROLL_SIGN=1
@@ -219,6 +228,7 @@ CONTROLLER_A_BUTTON=304
 CONTROLLER_B_BUTTON=305
 CONTROLLER_Y_BUTTON=307
 CONTROLLER_CAPTURE_BUTTON=308
+CONTROLLER_STABILITY_BUTTON=311
 CONTROLLER_LEFT_X_AXIS=0
 CONTROLLER_LEFT_Y_AXIS=1
 CONTROLLER_RIGHT_X_AXIS=3
@@ -265,6 +275,22 @@ use. Only solid, currently observed ball tracks can become a new steering
 target. A briefly missed locked track is shown as a dashed prediction while the
 existing drive stabilizer holds its last command briefly.
 
+The stability TUI section shows the current delta-angle tilt, sample count,
+RMS tilt, and rules score:
+
+```text
+tilt = sqrt(roll_delta^2 + pitch_delta^2)
+rms_tilt = sqrt(sum(tilt^2) / sample_count)
+stability_score = -2.5 * rms_tilt
+```
+
+`STABILITY_POLL_HZ` is parsed as a float, so values such as `17.5` are valid.
+The effective rate is limited by the main runtime loop and useful IMU report
+rate. Keep it at or below `1000000 / IMU_REPORT_INTERVAL_US` unless repeated
+sensor values are intentionally desired. CSV logging creates no directory or
+file while `STABILITY_LOG_ENABLED=false`; when enabled, one timestamped CSV is
+written per scoring window.
+
 Each `MOTOR_*_ESC_US` value is one compact `reverse,neutral,forward` triplet
 in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 `THROTTLE_NEUTRAL_US`, and `THROTTLE_FORWARD_US` fallback for that ESC only.
@@ -302,6 +328,8 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 - `robot/capture_state.py` owns the motor-neutral dataset capture state.
 - `robot/imu.py` owns optional BNO085 acquisition and baseline-relative
   orientation.
+- `robot/stability.py` owns rules-defined washboard sampling, RMS/score
+  calculation, optional CSV output, and future washboard-state lifecycle hooks.
 - `robot/horizon.py` combines a configured image horizon with IMU pitch and
   roll. Ball and cone candidates have separate above-horizon allowances.
 - `robot/overlay.py` owns the text-free solid/dashed shape and motion graphics.

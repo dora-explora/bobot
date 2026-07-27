@@ -23,7 +23,7 @@ from robot.horizon import HorizonEstimator
 from robot.imu import BNO085Service
 from robot.ml_detector import AsyncMLDetector
 from robot.mode_control import ModeControl
-from robot.models import DriveCommand, StateResult
+from robot.models import DetectionDebug, DriveCommand, StateResult
 from robot.object_detector import ObjectDetector
 from robot.object_tracker import ObjectTracker
 from robot.overlay import (
@@ -36,6 +36,7 @@ from robot.overlay import (
     draw_solid_triangle,
 )
 from robot.rough_section import RoughSection
+from robot.stability import StabilityScorer
 
 
 class DetectorState:
@@ -310,7 +311,7 @@ def draw_overlay(frame, result):
         )
 
 
-def print_telemetry(result, mode_control, output_command):
+def print_telemetry(result, mode_control, output_command, stability):
     target = result.best_target
     debug, command = result.debug, result.command
     attitude = result.attitude
@@ -326,7 +327,11 @@ def print_telemetry(result, mode_control, output_command):
           "imu=" + ("connected" if attitude is not None and attitude.connected else "offline"),
           "roll=" + _telemetry_angle(attitude, "roll_delta_degrees"),
           "pitch=" + _telemetry_angle(attitude, "pitch_delta_degrees"),
-          "yaw=" + _telemetry_angle(attitude, "yaw_delta_degrees"))
+          "yaw=" + _telemetry_angle(attitude, "yaw_delta_degrees"),
+          "stability=" + stability.status,
+          "stability_samples=" + str(stability.sample_count),
+          "stability_rms=" + str(round(stability.rms_tilt_degrees, 3)),
+          "stability_score=" + str(round(stability.score_points, 3)))
 
 
 def _telemetry_angle(attitude, attribute):
@@ -349,7 +354,15 @@ def report_fatal_error(error):
         print("Could not write fatal error log: " + str(log_error), file=sys.stderr, flush=True)
 
 
-def safe_shutdown(actuators, camera, controller, dashboard, imu, states=None):
+def safe_shutdown(
+    actuators,
+    camera,
+    controller,
+    dashboard,
+    imu,
+    states=None,
+    stability=None,
+):
     """Neutralize first; no cleanup error may prevent the remaining cleanup."""
     if actuators is not None:
         try:
@@ -374,6 +387,11 @@ def safe_shutdown(actuators, camera, controller, dashboard, imu, states=None):
                 close()
             except BaseException as error:
                 print("State shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+    if stability is not None:
+        try:
+            stability.close()
+        except BaseException as error:
+            print("Stability scorer shutdown failed: " + repr(error), file=sys.stderr, flush=True)
     if imu is not None:
         try:
             imu.close()
@@ -412,6 +430,7 @@ def run():
         "capture": CaptureState(),
     }
     mode_control = ModeControl(ACTIVE_STATE)
+    stability = StabilityScorer()
     dashboard = TuiDashboard()
     camera = None
     actuators = None
@@ -467,6 +486,18 @@ def run():
                     )
             menu_stick, menu_stick_source = controller.menu_stick()
             decision = mode_control.update(controller_update, menu_stick, menu_stick_source)
+            stability_action = stability.sync_state(
+                mode_control.active_state,
+                now,
+            )
+            if controller_update.stability_pressed:
+                stability_action = stability.toggle(now)
+            if stability_action:
+                mode_control.last_action = stability_action
+                if not dashboard.enabled:
+                    print("Stability: " + stability_action)
+            stability.update(attitude, now)
+            stability_snapshot = stability.snapshot(now)
             if decision.message and not dashboard.enabled:
                 print("Controller: " + decision.message)
 
@@ -489,9 +520,15 @@ def run():
                 controller.debug_lines(),
                 now,
                 fps,
+                stability_snapshot,
             )
             if not dashboard.enabled and now - last_telemetry >= config.TELEMETRY_INTERVAL:
-                print_telemetry(result, mode_control, output_command)
+                print_telemetry(
+                    result,
+                    mode_control,
+                    output_command,
+                    stability_snapshot,
+                )
                 last_telemetry = now
             if not config.HEADLESS:
                 draw_overlay(frame, result)
@@ -502,7 +539,15 @@ def run():
     except BaseException as error:
         report_fatal_error(error)
     finally:
-        safe_shutdown(actuators, camera, controller, dashboard, imu, states)
+        safe_shutdown(
+            actuators,
+            camera,
+            controller,
+            dashboard,
+            imu,
+            states,
+            stability,
+        )
 
 
 if __name__ == "__main__":

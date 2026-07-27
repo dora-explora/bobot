@@ -3,6 +3,7 @@ import unittest
 from robot.dashboard import TuiDashboard
 from robot.horizon import HorizonEstimate
 from robot.imu import IMUSnapshot
+from robot.stability import StabilitySnapshot
 
 
 class DashboardIndicatorTests(unittest.TestCase):
@@ -45,6 +46,29 @@ class DashboardIndicatorTests(unittest.TestCase):
         self.assertTrue(any("relative roll=1.0deg" in line for line in lines))
         self.assertTrue(any("yaw -180" in line for line in lines))
         self.assertTrue(any("horizon=baseline + IMU" in line for line in lines))
+
+    def test_stability_lines_show_rules_score_and_poll_rate(self):
+        snapshot = StabilitySnapshot(
+            status="running",
+            source="controller",
+            current_roll_degrees=3.0,
+            current_pitch_degrees=4.0,
+            current_tilt_degrees=5.0,
+            sample_count=8,
+            rms_tilt_degrees=6.25,
+            score_points=-15.625,
+            elapsed_seconds=2.5,
+            poll_hz=17.5,
+            log_enabled=False,
+            log_path="",
+            error="",
+        )
+
+        lines = TuiDashboard._stability_lines(snapshot)
+
+        self.assertTrue(any("poll=17.5Hz" in line for line in lines))
+        self.assertTrue(any("RMS=6.25deg" in line for line in lines))
+        self.assertTrue(any("score=-15.625pt" in line for line in lines))
 
 
 if __name__ == "__main__":
