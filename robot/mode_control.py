@@ -17,16 +17,35 @@ class ModeDecision:
 class ModeControl:
     """Own state transitions separately from vision and motor command logic."""
 
-    def __init__(self, start_state):
+    def __init__(self, start_state, unavailable_states=()):
         if start_state not in MENU_OPTIONS:
             raise ValueError("ROBOT_START_STATE must be one of: " + ", ".join(sorted(MENU_OPTIONS)))
-        self.active_state = start_state
+        self.unavailable_states = set(unavailable_states)
+        self.active_state = start_state if start_state not in self.unavailable_states else "static"
         self.menu_active = False
-        self.menu_selection = start_state
+        self.menu_selection = self.active_state
         self.detector_throttle_enabled = False
         self.menu_stick = (0.0, 0.0)
         self.menu_stick_source = "right"
-        self.last_action = "startup in " + start_state
+        self.last_action = (
+            "startup in " + self.active_state
+            if self.active_state == start_state
+            else "startup detector unavailable; entered static mode"
+        )
+
+    def disable_states(self, states, reason):
+        """Disable camera-dependent states without interrupting manual driving."""
+        self.unavailable_states.update(states)
+        if self.active_state in self.unavailable_states:
+            return self._enter_static(reason)
+        if self.menu_selection in self.unavailable_states:
+            self.menu_selection = self.active_state
+        self.last_action = reason
+        return ModeDecision()
+
+    @property
+    def available_states(self):
+        return tuple(name for name in MENU_OPTIONS if name not in self.unavailable_states)
 
     @property
     def output_enabled(self):
@@ -59,7 +78,7 @@ class ModeControl:
 
         if self.menu_active:
             selection = self.radial_selection(menu_stick)
-            if selection is not None:
+            if selection is not None and selection not in self.unavailable_states:
                 self.menu_selection = selection
             if controller_update.b_pressed:
                 self.menu_active = False
@@ -67,6 +86,8 @@ class ModeControl:
             if controller_update.y_released:
                 selected = self.menu_selection
                 self.menu_active = False
+                if selected in self.unavailable_states:
+                    return self._enter_static(selected + " is unavailable")
                 self.active_state = selected
                 self.detector_throttle_enabled = False
                 return self._decision(True, "released Y; selected " + selected + " from radial menu")

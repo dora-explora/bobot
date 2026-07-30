@@ -4,6 +4,7 @@ from robot.dashboard import TuiDashboard
 from robot.horizon import HorizonEstimate
 from robot.imu import IMUSnapshot
 from robot.stability import StabilitySnapshot
+from robot.mode_control import ModeControl
 
 
 class DashboardIndicatorTests(unittest.TestCase):
@@ -69,6 +70,14 @@ class DashboardIndicatorTests(unittest.TestCase):
         self.assertTrue(any("poll=17.5Hz" in line for line in lines))
         self.assertTrue(any("RMS=6.25deg" in line for line in lines))
         self.assertTrue(any("score=-15.625pt" in line for line in lines))
+
+    def test_camera_status_reports_offline_states(self):
+        modes = ModeControl("static", unavailable_states=("detector", "capture"))
+
+        status = TuiDashboard._camera_status(None, modes)
+
+        self.assertIn("OFFLINE", status)
+        self.assertIn("detector", status)
 
 
 if __name__ == "__main__":

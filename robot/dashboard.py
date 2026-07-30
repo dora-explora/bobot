@@ -91,11 +91,10 @@ class TuiDashboard:
             lines = [
                 "Robot Code TUI",
                 "[State] active=" + state_name + " menu=" + str(mode_control.menu_active)
-                + " available=static,detector,manual,capture",
+                + " available=" + ",".join(mode_control.available_states),
                 "controls A=manual B=static hold-Y=menu X=capture D-pad=limit RB=stability",
                 "last_action=" + mode_control.last_action,
-                "[Status] camera=" + config.CAMERA_BACKEND
-                + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
+                "[Status] camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1))
                 + " headless=" + str(config.HEADLESS),
                 "actuators=" + str(config.ENABLE_ACTUATORS)
@@ -108,10 +107,10 @@ class TuiDashboard:
             lines = [
                 "Robot Code TUI", "==============", "",
                 "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
-                + "  available=static,detector,manual,capture",
+                + "  available=" + ",".join(mode_control.available_states),
                 "controls: A=manual B=static hold Y=menu X=capture D-pad=limit RB=stability",
                 "last_action=" + mode_control.last_action, "",
-                "[Status]", "camera=" + config.CAMERA_BACKEND + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
+                "[Status]", "camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
                 "actuators=" + str(config.ENABLE_ACTUATORS)
                 + " throttle_limit=" + str(round(config.THROTTLE_LIMIT * 100.0)) + "%"
@@ -200,6 +199,16 @@ class TuiDashboard:
                           + " sat>=" + str(config.CONE_SATURATION_MIN)
                           + " value=" + str(config.CONE_VALUE_MIN) + "-" + str(config.CONE_VALUE_MAX)])
         return lines
+
+    @staticmethod
+    def _camera_status(frame, mode_control):
+        if frame is None:
+            unavailable = ",".join(sorted(mode_control.unavailable_states))
+            return "OFFLINE; unavailable=" + (unavailable or "none")
+        return (
+            config.CAMERA_BACKEND
+            + " frame=" + str(frame.shape[1]) + "x" + str(frame.shape[0])
+        )
 
     @staticmethod
     def _stability_lines(stability, compact=False):

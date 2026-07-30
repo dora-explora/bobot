@@ -439,19 +439,34 @@ def run():
     last_imu_connect_attempt = time.time()
     fps = 0.0
     try:
-        camera = open_camera(config.FRAME_WIDTH, config.FRAME_HEIGHT)
         actuators = Pca9685Actuators()
-        if not config.HEADLESS:
+        try:
+            camera = open_camera(config.FRAME_WIDTH, config.FRAME_HEIGHT)
+        except BaseException as error:
+            camera_error = "camera unavailable: " + str(error)
+            print(camera_error, file=sys.stderr, flush=True)
+            mode_control.disable_states(("detector", "capture"), camera_error)
+        if camera is not None and not config.HEADLESS:
             cv2.namedWindow("Robot Detector")
             print("Visualization window enabled. It accepts no runtime controls.")
         while True:
-            ok, frame = camera.read()
-            if not ok:
-                raise RuntimeError("Camera frame read failed")
             now = time.time()
-            if last_frame_time:
+            frame = None
+            if camera is not None:
+                ok, frame = camera.read()
+                if not ok:
+                    camera_error = "camera frame read failed; detector disabled"
+                    print(camera_error, file=sys.stderr, flush=True)
+                    try:
+                        camera.release()
+                    except BaseException as error:
+                        print("Camera shutdown failed: " + repr(error), file=sys.stderr, flush=True)
+                    camera = None
+                    mode_control.disable_states(("detector", "capture"), camera_error)
+            if frame is not None and last_frame_time:
                 fps = 1.0 / max(.001, now - last_frame_time)
-            last_frame_time = now
+            if frame is not None:
+                last_frame_time = now
             attitude = imu.read()
             imu_needs_reconnect = (
                 not attitude.connected
@@ -468,12 +483,14 @@ def run():
                 imu.connect()
                 last_imu_connect_attempt = now
                 attitude = imu.read()
-            horizon = horizon_estimator.estimate(
-                frame.shape[1],
-                frame.shape[0],
-                attitude,
-                now,
-            )
+            horizon = None
+            if frame is not None:
+                horizon = horizon_estimator.estimate(
+                    frame.shape[1],
+                    frame.shape[0],
+                    attitude,
+                    now,
+                )
             controller_update = controller.poll()
             if controller_update.throttle_limit_delta:
                 previous_limit = config.THROTTLE_LIMIT
@@ -530,10 +547,12 @@ def run():
                     stability_snapshot,
                 )
                 last_telemetry = now
-            if not config.HEADLESS:
+            if frame is not None and not config.HEADLESS:
                 draw_overlay(frame, result)
                 cv2.imshow("Robot Detector", frame)
                 cv2.waitKey(1)  # Required only to keep the visualization responsive; input is ignored.
+            if frame is None:
+                time.sleep(0.02)
     except KeyboardInterrupt:
         print("Keyboard interrupt received. Neutralizing outputs and exiting.")
     except BaseException as error:

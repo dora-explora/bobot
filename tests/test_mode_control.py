@@ -101,6 +101,22 @@ class ModeControlTests(unittest.TestCase):
         self.assertEqual(modes.active_state, "static")
         self.assertTrue(decision.neutralize_this_frame)
 
+    def test_camera_unavailable_forces_detector_start_to_static(self):
+        modes = ModeControl("detector", unavailable_states=("detector", "capture"))
+
+        self.assertEqual(modes.active_state, "static")
+        self.assertIn("detector", modes.unavailable_states)
+        self.assertNotIn("detector", modes.available_states)
+
+    def test_camera_unavailable_cannot_be_selected_from_menu(self):
+        modes = ModeControl("static", unavailable_states=("detector", "capture"))
+        modes.update(ControllerUpdate(y_pressed=True), (0.0, 1.0))
+
+        decision = modes.update(ControllerUpdate(y_released=True), (0.0, 1.0))
+
+        self.assertEqual(modes.active_state, "static")
+        self.assertTrue(decision.neutralize_this_frame)
+
 
 if __name__ == "__main__":
     unittest.main()
