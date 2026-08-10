@@ -37,6 +37,7 @@ from robot.overlay import (
 )
 from robot.rough_section import RoughSection
 from robot.stability import StabilityScorer
+from robot.suspension import SuspensionControl
 
 
 class DetectorState:
@@ -209,6 +210,7 @@ class ManualState:
                 right=right,
             ),
             state_lines=self.controller.debug_lines() + [
+                "LB=bottom suspension RB=raise suspension",
                 "scaled motor input left=" + str(round(left, 3))
                 + " right=" + str(round(right, 3))
                 + " limit=" + str(config.THROTTLE_LIMIT),
@@ -431,6 +433,7 @@ def run():
     }
     mode_control = ModeControl(ACTIVE_STATE)
     stability = StabilityScorer()
+    suspension = SuspensionControl(config.SUSPENSION_START_STATE)
     dashboard = TuiDashboard()
     camera = None
     actuators = None
@@ -503,11 +506,16 @@ def run():
                     )
             menu_stick, menu_stick_source = controller.menu_stick()
             decision = mode_control.update(controller_update, menu_stick, menu_stick_source)
+            suspension_action = suspension.update(mode_control.active_state, controller_update)
+            if suspension_action:
+                mode_control.last_action = suspension_action
+                if not dashboard.enabled:
+                    print("Suspension: " + suspension_action)
             stability_action = stability.sync_state(
                 mode_control.active_state,
                 now,
             )
-            if controller_update.stability_pressed:
+            if controller_update.stability_pressed and mode_control.active_state != "manual":
                 stability_action = stability.toggle(now)
             if stability_action:
                 mode_control.last_action = stability_action
@@ -527,7 +535,7 @@ def run():
                 controller_update,
             )
             output_command = mode_control.gate_command(result.command, decision.neutralize_this_frame)
-            actuators.apply(output_command)
+            actuators.apply(output_command, suspension.state)
             dashboard.draw(
                 frame,
                 mode_control,

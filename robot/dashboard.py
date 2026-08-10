@@ -92,7 +92,7 @@ class TuiDashboard:
                 "Robot Code TUI",
                 "[State] active=" + state_name + " menu=" + str(mode_control.menu_active)
                 + " available=" + ",".join(mode_control.available_states),
-                "controls A=manual B=static hold-Y=menu X=capture D-pad=limit RB=stability",
+                "controls A=manual B=static hold-Y=menu D-pad=limit manual-LB/RB=suspension",
                 "last_action=" + mode_control.last_action,
                 "[Status] camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1))
@@ -108,7 +108,7 @@ class TuiDashboard:
                 "Robot Code TUI", "==============", "",
                 "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
                 + "  available=" + ",".join(mode_control.available_states),
-                "controls: A=manual B=static hold Y=menu X=capture D-pad=limit RB=stability",
+                "controls: A=manual B=static hold Y=menu D-pad=limit manual LB/RB=suspension",
                 "last_action=" + mode_control.last_action, "",
                 "[Status]", "camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
@@ -141,11 +141,12 @@ class TuiDashboard:
                 + " throttle=" + str(round(command.throttle, 3)),
                 "output mode=" + output_command.mode + " reason=" + output_command.reason,
                 self._motors(actuators),
+                self._suspension(actuators),
             ])
             return lines
 
         if state_name == "manual":
-            lines.extend(["[Manual Controller]", "Left/right vertical sticks drive each side. B=static Y=menu."])
+            lines.extend(["[Manual Controller]", "Sticks tank drive; LB bottoms suspension; RB raises it. B=static Y=menu."])
             lines.extend(result.state_lines)
         elif state_name == "static":
             lines.extend(["[Static]", "Motor output is neutral by design. A=manual Y=menu."])
@@ -180,7 +181,7 @@ class TuiDashboard:
                       "output mode=" + output_command.mode + " reason=" + output_command.reason,
                       "raw=" + str(round(debug.raw_steering, 3)) + " smoothed=" + str(round(debug.smoothed_steering, 3))
                       + " slew_limited=" + str(debug.steering_limited), self._steering_bar(command.steering, width),
-                      self._motors(actuators)])
+                      self._motors(actuators), self._suspension(actuators)])
         lines.extend([""])
         lines.extend(self._imu_lines(result.attitude, result.horizon, width, compact))
         if state_name == "detector":
@@ -465,6 +466,17 @@ class TuiDashboard:
     def _motors(actuators):
         values, pulses = actuators.last_motor_values, actuators.last_motor_pulses_us
         return "motors " + " ".join(name + "=" + str(round(values.get(name, 0.0), 3)) + "@" + str(pulses.get(name, "-")) for name in ("front_left", "front_right", "rear_left", "rear_right"))
+
+    @staticmethod
+    def _suspension(actuators):
+        pulses = actuators.last_suspension_pulses_us
+        return (
+            "suspension " + actuators.suspension_state + " "
+            + " ".join(
+                name + "@" + str(pulses.get(name, "-"))
+                for name in ("front_left", "front_right", "rear_left", "rear_right")
+            )
+        )
 
     @staticmethod
     def _steering_bar(steering, terminal_width):

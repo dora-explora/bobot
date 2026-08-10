@@ -85,6 +85,55 @@ MOTOR_ESC_US = {
     "rear_right": env_pulse_triplet("MOTOR_REAR_RIGHT_ESC_US", SHARED_ESC_US),
 }
 
+SUSPENSION_ENABLED = env_bool("SUSPENSION_ENABLED", "true")
+SUSPENSION_START_STATE = os.environ.get("SUSPENSION_START_STATE", "bottomed").lower()
+SUSPENSION_FAILSAFE_STATE = os.environ.get("SUSPENSION_FAILSAFE_STATE", "raised").lower()
+if SUSPENSION_START_STATE not in ("bottomed", "raised"):
+    raise ValueError("SUSPENSION_START_STATE must be bottomed or raised")
+if SUSPENSION_FAILSAFE_STATE not in ("bottomed", "raised"):
+    raise ValueError("SUSPENSION_FAILSAFE_STATE must be bottomed or raised")
+SUSPENSION_BOTTOMED_US = env_int("SUSPENSION_BOTTOMED_US", "1500")
+SUSPENSION_RAISED_US = env_int("SUSPENSION_RAISED_US", "1500")
+SUSPENSION_OUTPUTS = (
+    (
+        "front_left",
+        env_int("SUSPENSION_FRONT_LEFT_CHANNEL", "12"),
+        env_int("SUSPENSION_FRONT_LEFT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
+        env_int("SUSPENSION_FRONT_LEFT_RAISED_US", str(SUSPENSION_RAISED_US)),
+    ),
+    (
+        "front_right",
+        env_int("SUSPENSION_FRONT_RIGHT_CHANNEL", "13"),
+        env_int("SUSPENSION_FRONT_RIGHT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
+        env_int("SUSPENSION_FRONT_RIGHT_RAISED_US", str(SUSPENSION_RAISED_US)),
+    ),
+    (
+        "rear_left",
+        env_int("SUSPENSION_REAR_LEFT_CHANNEL", "14"),
+        env_int("SUSPENSION_REAR_LEFT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
+        env_int("SUSPENSION_REAR_LEFT_RAISED_US", str(SUSPENSION_RAISED_US)),
+    ),
+    (
+        "rear_right",
+        env_int("SUSPENSION_REAR_RIGHT_CHANNEL", "15"),
+        env_int("SUSPENSION_REAR_RIGHT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
+        env_int("SUSPENSION_REAR_RIGHT_RAISED_US", str(SUSPENSION_RAISED_US)),
+    ),
+)
+_pca_channels = [channel for _, channel, _ in MOTOR_OUTPUTS]
+if SUSPENSION_ENABLED:
+    _pca_channels.extend(channel for _, channel, _, _ in SUSPENSION_OUTPUTS)
+if any(channel < 0 or channel > 15 for channel in _pca_channels):
+    raise ValueError("PCA9685 motor and suspension channels must be between 0 and 15")
+if len(set(_pca_channels)) != len(_pca_channels):
+    raise ValueError("PCA9685 motor and suspension channels must be unique")
+if any(
+    not 500 <= pulse <= 2500
+    for _, _, bottomed_us, raised_us in SUSPENSION_OUTPUTS
+    for pulse in (bottomed_us, raised_us)
+):
+    raise ValueError("Suspension servo pulses must be between 500 and 2500 microseconds")
+
 TUI_ENABLED = env_bool("TUI", "true")
 TUI_INTERVAL = env_float("TUI_INTERVAL", "0.10")
 TELEMETRY_INTERVAL = env_float("TELEMETRY_INTERVAL", "0.25")
@@ -224,6 +273,8 @@ CONTROLLER_B_BUTTON = env_int("CONTROLLER_B_BUTTON", "305")
 CONTROLLER_Y_BUTTON = env_int("CONTROLLER_Y_BUTTON", "307")
 CONTROLLER_CAPTURE_BUTTON = env_int("CONTROLLER_CAPTURE_BUTTON", "308")
 CONTROLLER_STABILITY_BUTTON = env_int("CONTROLLER_STABILITY_BUTTON", "311")
+CONTROLLER_LEFT_BUMPER_BUTTON = env_int("CONTROLLER_LEFT_BUMPER_BUTTON", "310")
+CONTROLLER_RIGHT_BUMPER_BUTTON = env_int("CONTROLLER_RIGHT_BUMPER_BUTTON", "311")
 CONTROLLER_LEFT_X_AXIS = env_int("CONTROLLER_LEFT_X_AXIS", "0")
 CONTROLLER_LEFT_Y_AXIS = env_int("CONTROLLER_LEFT_Y_AXIS", "1")
 CONTROLLER_RIGHT_X_AXIS = env_int("CONTROLLER_RIGHT_X_AXIS", "3")

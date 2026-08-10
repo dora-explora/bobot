@@ -31,6 +31,13 @@ def throttle_pulse(command, esc_us):
     return normalized_to_pulse(normalize_throttle(command), reverse_us, neutral_us, forward_us)
 
 
+def suspension_pulses(state):
+    if state not in ("bottomed", "raised"):
+        raise ValueError("suspension state must be bottomed or raised")
+    index = 2 if state == "bottomed" else 3
+    return {output[0]: output[index] for output in config.SUSPENSION_OUTPUTS}
+
+
 def motor_mix(command):
     if command.left is not None and command.right is not None:
         requested = {
@@ -59,12 +66,12 @@ def _write_watchdog_error(error_report, fatal_error_log):
         pass
 
 
-def _pca9685_watchdog_worker(connection, motor_outputs, neutral_pulses, watchdog_seconds, fatal_error_log):
+def _pca9685_watchdog_worker(connection, outputs, initial_pulses, failsafe_pulses, watchdog_seconds, fatal_error_log):
     """Own the I2C device and fail to neutral when parent heartbeats stop."""
     pca = None
 
     def write_pulses(pulses):
-        for name, channel, _ in motor_outputs:
+        for name, channel in outputs:
             pca.channels[channel].duty_cycle = _duty_cycle_for_pulse(pulses[name])
 
     try:
@@ -74,14 +81,14 @@ def _pca9685_watchdog_worker(connection, motor_outputs, neutral_pulses, watchdog
 
         pca = PCA9685(busio.I2C(board.SCL, board.SDA))
         pca.frequency = 50
-        write_pulses(neutral_pulses)
+        write_pulses(initial_pulses)
         connection.send(("ready", ""))
         last_heartbeat = time.monotonic()
 
         while True:
             wait_seconds = max(0.01, watchdog_seconds - (time.monotonic() - last_heartbeat))
             if not connection.poll(wait_seconds):
-                write_pulses(neutral_pulses)
+                write_pulses(failsafe_pulses)
                 last_heartbeat = time.monotonic()
                 continue
 
@@ -90,7 +97,7 @@ def _pca9685_watchdog_worker(connection, motor_outputs, neutral_pulses, watchdog
                 write_pulses(payload)
                 last_heartbeat = time.monotonic()
             elif message == "shutdown":
-                write_pulses(neutral_pulses)
+                write_pulses(failsafe_pulses)
                 break
     except BaseException:
         error_report = traceback.format_exc()
@@ -102,7 +109,7 @@ def _pca9685_watchdog_worker(connection, motor_outputs, neutral_pulses, watchdog
     finally:
         if pca is not None:
             try:
-                write_pulses(neutral_pulses)
+                write_pulses(failsafe_pulses)
             except BaseException:
                 pass
             try:
@@ -118,17 +125,17 @@ def _pca9685_watchdog_worker(connection, motor_outputs, neutral_pulses, watchdog
 class Pca9685Watchdog:
     """Parent-side interface for watchdog-owned PCA9685 output."""
 
-    def __init__(self, motor_outputs, neutral_pulses, watchdog_seconds, startup_timeout_seconds):
+    def __init__(self, outputs, initial_pulses, failsafe_pulses, watchdog_seconds, startup_timeout_seconds):
         if watchdog_seconds <= 0:
             raise ValueError("ACTUATOR_WATCHDOG_SECONDS must be greater than zero")
         self.connection, worker_connection = multiprocessing.get_context("spawn").Pipe()
         self.process = multiprocessing.get_context("spawn").Process(
             target=_pca9685_watchdog_worker,
-            args=(worker_connection, motor_outputs, neutral_pulses, watchdog_seconds, config.FATAL_ERROR_LOG),
+            args=(worker_connection, outputs, initial_pulses, failsafe_pulses, watchdog_seconds, config.FATAL_ERROR_LOG),
             name="pca9685-watchdog",
             daemon=False,
         )
-        self.neutral_pulses = neutral_pulses
+        self.failsafe_pulses = failsafe_pulses
         self.closed = False
         self.process.start()
         worker_connection.close()
@@ -148,7 +155,7 @@ class Pca9685Watchdog:
             raise RuntimeError("PCA9685 watchdog connection failed: " + str(error)) from error
 
     def neutralize(self):
-        self.apply_pulses(self.neutral_pulses)
+        self.apply_pulses(self.failsafe_pulses)
 
     def close(self):
         if self.closed:
@@ -184,18 +191,37 @@ class Pca9685Actuators:
         self.enabled = config.ENABLE_ACTUATORS
         self.last_motor_values = {}
         self.last_motor_pulses_us = {}
+        self.suspension_state = config.SUSPENSION_START_STATE
+        self.last_suspension_pulses_us = suspension_pulses(self.suspension_state)
         self.watchdog = None
         if not self.enabled:
             print("Actuators disabled. Set ENABLE_ACTUATORS=true to use PCA9685 outputs.")
             return
 
-        neutral_pulses = {
+        motor_neutral_pulses = {
             name: config.MOTOR_ESC_US[name][1]
             for name, _, _ in config.MOTOR_OUTPUTS
         }
+        outputs = tuple((name, channel) for name, channel, _ in config.MOTOR_OUTPUTS)
+        initial_pulses = dict(motor_neutral_pulses)
+        failsafe_pulses = dict(motor_neutral_pulses)
+        if config.SUSPENSION_ENABLED:
+            outputs += tuple(
+                ("suspension_" + name, channel)
+                for name, channel, _, _ in config.SUSPENSION_OUTPUTS
+            )
+            initial_pulses.update(
+                ("suspension_" + name, pulse)
+                for name, pulse in suspension_pulses(config.SUSPENSION_START_STATE).items()
+            )
+            failsafe_pulses.update(
+                ("suspension_" + name, pulse)
+                for name, pulse in suspension_pulses(config.SUSPENSION_FAILSAFE_STATE).items()
+            )
         self.watchdog = Pca9685Watchdog(
-            config.MOTOR_OUTPUTS,
-            neutral_pulses,
+            outputs,
+            initial_pulses,
+            failsafe_pulses,
             config.ACTUATOR_WATCHDOG_SECONDS,
             config.ACTUATOR_STARTUP_TIMEOUT_SECONDS,
         )
@@ -205,9 +231,21 @@ class Pca9685Actuators:
             name + "=" + "/".join(str(value) for value in config.MOTOR_ESC_US[name])
             for name, _, _ in config.MOTOR_OUTPUTS
         ))
+        if config.SUSPENSION_ENABLED:
+            print(
+                "Suspension enabled: start=" + config.SUSPENSION_START_STATE
+                + " failsafe=" + config.SUSPENSION_FAILSAFE_STATE
+                + " channels=" + ", ".join(
+                    name + "=" + str(channel)
+                    for name, channel, _, _ in config.SUSPENSION_OUTPUTS
+                )
+            )
         self.neutralize()
 
-    def apply(self, command):
+    def apply(self, command, suspension_state=None):
+        if suspension_state is not None:
+            self.suspension_state = suspension_state
+            self.last_suspension_pulses_us = suspension_pulses(suspension_state)
         requested = motor_mix(command)
         self.last_motor_values = {name: normalize_throttle(value) for name, value in requested.items()}
         self.last_motor_pulses_us = {
@@ -215,7 +253,13 @@ class Pca9685Actuators:
             for name, value in requested.items()
         }
         if self.enabled:
-            self.watchdog.apply_pulses(self.last_motor_pulses_us)
+            pulses = dict(self.last_motor_pulses_us)
+            if config.SUSPENSION_ENABLED:
+                pulses.update(
+                    ("suspension_" + name, pulse)
+                    for name, pulse in self.last_suspension_pulses_us.items()
+                )
+            self.watchdog.apply_pulses(pulses)
 
     def neutralize(self):
         self.apply(DriveCommand(reason="neutralize"))

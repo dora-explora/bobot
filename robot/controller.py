@@ -14,6 +14,8 @@ class ControllerUpdate:
     y_released: bool = False
     capture_pressed: bool = False
     stability_pressed: bool = False
+    left_bumper_pressed: bool = False
+    right_bumper_pressed: bool = False
     throttle_limit_delta: int = 0
     controller_lost: bool = False
 
@@ -120,7 +122,13 @@ class ControllerInput:
                     update.y_released = True
                 elif event.value != 1:
                     continue
-                elif event.code == config.CONTROLLER_A_BUTTON:
+                else:
+                    update.left_bumper_pressed |= event.code == config.CONTROLLER_LEFT_BUMPER_BUTTON
+                    update.right_bumper_pressed |= event.code == config.CONTROLLER_RIGHT_BUMPER_BUTTON
+                    update.stability_pressed |= event.code == config.CONTROLLER_STABILITY_BUTTON
+                if event.value != 1:
+                    continue
+                if event.code == config.CONTROLLER_A_BUTTON:
                     update.a_pressed = True
                 elif event.code == config.CONTROLLER_B_BUTTON:
                     update.b_pressed = True
@@ -128,8 +136,6 @@ class ControllerInput:
                     update.y_pressed = True
                 elif event.code == config.CONTROLLER_CAPTURE_BUTTON:
                     update.capture_pressed = True
-                elif event.code == config.CONTROLLER_STABILITY_BUTTON:
-                    update.stability_pressed = True
                 elif event.code == config.CONTROLLER_DPAD_UP_BUTTON:
                     update.throttle_limit_delta += 1
                 elif event.code == config.CONTROLLER_DPAD_DOWN_BUTTON:
@@ -202,6 +208,8 @@ class ControllerInput:
                 config.CONTROLLER_CAPTURE_BUTTON,
                 config.CONTROLLER_STABILITY_BUTTON,
             ))
+            + " bumpers L/R=" + str(config.CONTROLLER_LEFT_BUMPER_BUTTON)
+            + "/" + str(config.CONTROLLER_RIGHT_BUMPER_BUTTON)
             + " deadzone=" + str(config.CONTROLLER_DEADZONE)
             + " menu_deadzone=" + str(config.CONTROLLER_MENU_DEADZONE),
             "D-pad axis=" + str(config.CONTROLLER_DPAD_Y_AXIS)

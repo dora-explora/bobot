@@ -206,6 +206,18 @@ MOTOR_FRONT_LEFT_ESC_US=1400,1500,1600
 MOTOR_FRONT_RIGHT_ESC_US=1400,1500,1600
 MOTOR_REAR_LEFT_ESC_US=1400,1500,1600
 MOTOR_REAR_RIGHT_ESC_US=1400,1500,1600
+SUSPENSION_ENABLED=true
+SUSPENSION_START_STATE=bottomed
+SUSPENSION_FAILSAFE_STATE=raised
+SUSPENSION_BOTTOMED_US=1500
+SUSPENSION_RAISED_US=1500
+SUSPENSION_FRONT_LEFT_CHANNEL=12
+SUSPENSION_FRONT_RIGHT_CHANNEL=13
+SUSPENSION_REAR_LEFT_CHANNEL=14
+SUSPENSION_REAR_RIGHT_CHANNEL=15
+# Each corner can override both shared pulse values, for example:
+SUSPENSION_FRONT_LEFT_BOTTOMED_US=1500
+SUSPENSION_FRONT_LEFT_RAISED_US=1500
 ACTUATOR_WATCHDOG_SECONDS=0.25
 ACTUATOR_STARTUP_TIMEOUT_SECONDS=3.0
 FATAL_ERROR_LOG=/tmp/bobot-fatal.log
@@ -229,6 +241,8 @@ CONTROLLER_B_BUTTON=305
 CONTROLLER_Y_BUTTON=307
 CONTROLLER_CAPTURE_BUTTON=308
 CONTROLLER_STABILITY_BUTTON=311
+CONTROLLER_LEFT_BUMPER_BUTTON=310
+CONTROLLER_RIGHT_BUMPER_BUTTON=311
 CONTROLLER_LEFT_X_AXIS=0
 CONTROLLER_LEFT_Y_AXIS=1
 CONTROLLER_RIGHT_X_AXIS=3
@@ -295,9 +309,23 @@ Each `MOTOR_*_ESC_US` value is one compact `reverse,neutral,forward` triplet
 in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 `THROTTLE_NEUTRAL_US`, and `THROTTLE_FORWARD_US` fallback for that ESC only.
 
+In manual mode, the left bumper selects `bottomed` suspension and the right
+bumper selects `raised`. Outside manual mode, the right bumper retains its
+stability-score control. The shared suspension pulse defaults are both 1500 us
+so newly connected linkages do not move before calibration. Set distinct
+`SUSPENSION_BOTTOMED_US` and `SUSPENSION_RAISED_US` values, or use the
+per-corner `SUSPENSION_<CORNER>_<STATE>_US` overrides when servo geometry or
+direction differs. The watchdog moves suspension to `SUSPENSION_FAILSAFE_STATE`
+if runtime heartbeats stop.
+
 ## Safety Rules
 
 - Test all four ESC channels with wheels off the ground first.
+- Power the four servos from a suitable external 5-6 V supply connected to the
+  PCA9685 V+ rail, with its ground shared with the Pi/PCA9685. Do not power four
+  loaded servos from the Pi's 5 V pin.
+- Disconnect the servo linkages for first pulse calibration, then approach each
+  mechanical endpoint gradually before attaching loaded linkages.
 - Keep `ENABLE_ACTUATORS=false` until PWM ranges are confirmed.
 - Static mode is the default throttle interlock. A enters manual, B returns to
   static, and holding Y opens the neutral-output radial menu; releasing Y
