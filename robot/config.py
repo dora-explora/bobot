@@ -20,6 +20,15 @@ def env_auto_int(name, default):
     return int(os.environ.get(name, default), 0)
 
 
+def env_servo_ms(name, default, legacy_us_name=None):
+    """Read a servo pulse in milliseconds, accepting old microsecond config."""
+    if name in os.environ:
+        return float(os.environ[name])
+    if legacy_us_name and legacy_us_name in os.environ:
+        return float(os.environ[legacy_us_name]) / 1000.0
+    return float(default)
+
+
 def env_pulse_triplet(name, fallback):
     """Read reverse,neutral,forward microseconds from one compact envvar."""
     raw_value = os.environ.get(name, ",".join(str(value) for value in fallback))
@@ -92,32 +101,68 @@ if SUSPENSION_START_STATE not in ("bottomed", "raised"):
     raise ValueError("SUSPENSION_START_STATE must be bottomed or raised")
 if SUSPENSION_FAILSAFE_STATE not in ("bottomed", "raised"):
     raise ValueError("SUSPENSION_FAILSAFE_STATE must be bottomed or raised")
-SUSPENSION_BOTTOMED_US = env_int("SUSPENSION_BOTTOMED_US", "1500")
-SUSPENSION_RAISED_US = env_int("SUSPENSION_RAISED_US", "1500")
+SUSPENSION_BOTTOMED_MS = env_servo_ms(
+    "SUSPENSION_BOTTOMED_MS", "1.5", "SUSPENSION_BOTTOMED_US"
+)
+SUSPENSION_RAISED_MS = env_servo_ms(
+    "SUSPENSION_RAISED_MS", "1.5", "SUSPENSION_RAISED_US"
+)
 SUSPENSION_OUTPUTS = (
     (
         "front_left",
         env_int("SUSPENSION_FRONT_LEFT_CHANNEL", "12"),
-        env_int("SUSPENSION_FRONT_LEFT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
-        env_int("SUSPENSION_FRONT_LEFT_RAISED_US", str(SUSPENSION_RAISED_US)),
+        env_servo_ms(
+            "SUSPENSION_FRONT_LEFT_BOTTOMED_MS",
+            SUSPENSION_BOTTOMED_MS,
+            "SUSPENSION_FRONT_LEFT_BOTTOMED_US",
+        ),
+        env_servo_ms(
+            "SUSPENSION_FRONT_LEFT_RAISED_MS",
+            SUSPENSION_RAISED_MS,
+            "SUSPENSION_FRONT_LEFT_RAISED_US",
+        ),
     ),
     (
         "front_right",
         env_int("SUSPENSION_FRONT_RIGHT_CHANNEL", "13"),
-        env_int("SUSPENSION_FRONT_RIGHT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
-        env_int("SUSPENSION_FRONT_RIGHT_RAISED_US", str(SUSPENSION_RAISED_US)),
+        env_servo_ms(
+            "SUSPENSION_FRONT_RIGHT_BOTTOMED_MS",
+            SUSPENSION_BOTTOMED_MS,
+            "SUSPENSION_FRONT_RIGHT_BOTTOMED_US",
+        ),
+        env_servo_ms(
+            "SUSPENSION_FRONT_RIGHT_RAISED_MS",
+            SUSPENSION_RAISED_MS,
+            "SUSPENSION_FRONT_RIGHT_RAISED_US",
+        ),
     ),
     (
         "rear_left",
         env_int("SUSPENSION_REAR_LEFT_CHANNEL", "14"),
-        env_int("SUSPENSION_REAR_LEFT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
-        env_int("SUSPENSION_REAR_LEFT_RAISED_US", str(SUSPENSION_RAISED_US)),
+        env_servo_ms(
+            "SUSPENSION_REAR_LEFT_BOTTOMED_MS",
+            SUSPENSION_BOTTOMED_MS,
+            "SUSPENSION_REAR_LEFT_BOTTOMED_US",
+        ),
+        env_servo_ms(
+            "SUSPENSION_REAR_LEFT_RAISED_MS",
+            SUSPENSION_RAISED_MS,
+            "SUSPENSION_REAR_LEFT_RAISED_US",
+        ),
     ),
     (
         "rear_right",
         env_int("SUSPENSION_REAR_RIGHT_CHANNEL", "15"),
-        env_int("SUSPENSION_REAR_RIGHT_BOTTOMED_US", str(SUSPENSION_BOTTOMED_US)),
-        env_int("SUSPENSION_REAR_RIGHT_RAISED_US", str(SUSPENSION_RAISED_US)),
+        env_servo_ms(
+            "SUSPENSION_REAR_RIGHT_BOTTOMED_MS",
+            SUSPENSION_BOTTOMED_MS,
+            "SUSPENSION_REAR_RIGHT_BOTTOMED_US",
+        ),
+        env_servo_ms(
+            "SUSPENSION_REAR_RIGHT_RAISED_MS",
+            SUSPENSION_RAISED_MS,
+            "SUSPENSION_REAR_RIGHT_RAISED_US",
+        ),
     ),
 )
 _pca_channels = [channel for _, channel, _ in MOTOR_OUTPUTS]
@@ -128,11 +173,11 @@ if any(channel < 0 or channel > 15 for channel in _pca_channels):
 if len(set(_pca_channels)) != len(_pca_channels):
     raise ValueError("PCA9685 motor and suspension channels must be unique")
 if any(
-    not 500 <= pulse <= 2500
-    for _, _, bottomed_us, raised_us in SUSPENSION_OUTPUTS
-    for pulse in (bottomed_us, raised_us)
+    not 0.5 <= pulse <= 2.5
+    for _, _, bottomed_ms, raised_ms in SUSPENSION_OUTPUTS
+    for pulse in (bottomed_ms, raised_ms)
 ):
-    raise ValueError("Suspension servo pulses must be between 500 and 2500 microseconds")
+    raise ValueError("Suspension servo pulses must be between 0.5 and 2.5 milliseconds")
 
 TUI_ENABLED = env_bool("TUI", "true")
 TUI_INTERVAL = env_float("TUI_INTERVAL", "0.10")

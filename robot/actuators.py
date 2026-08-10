@@ -35,7 +35,10 @@ def suspension_pulses(state):
     if state not in ("bottomed", "raised"):
         raise ValueError("suspension state must be bottomed or raised")
     index = 2 if state == "bottomed" else 3
-    return {output[0]: output[index] for output in config.SUSPENSION_OUTPUTS}
+    return {
+        output[0]: int(round(output[index] * 1000.0))
+        for output in config.SUSPENSION_OUTPUTS
+    }
 
 
 def motor_mix(command):

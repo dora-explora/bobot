@@ -8,6 +8,9 @@ from robot.mode_control import ModeControl
 
 
 class DashboardIndicatorTests(unittest.TestCase):
+    def test_servo_pulse_is_displayed_in_milliseconds(self):
+        self.assertEqual(TuiDashboard._pulse_ms(1750), "1.75ms")
+
     def test_tilt_indicator_places_marker_away_from_center(self):
         indicator = TuiDashboard._tilt_indicator(20.0, 15.0)
 

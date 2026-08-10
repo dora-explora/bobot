@@ -209,15 +209,15 @@ MOTOR_REAR_RIGHT_ESC_US=1400,1500,1600
 SUSPENSION_ENABLED=true
 SUSPENSION_START_STATE=bottomed
 SUSPENSION_FAILSAFE_STATE=raised
-SUSPENSION_BOTTOMED_US=1500
-SUSPENSION_RAISED_US=1500
+SUSPENSION_BOTTOMED_MS=1.5
+SUSPENSION_RAISED_MS=1.5
 SUSPENSION_FRONT_LEFT_CHANNEL=12
 SUSPENSION_FRONT_RIGHT_CHANNEL=13
 SUSPENSION_REAR_LEFT_CHANNEL=14
 SUSPENSION_REAR_RIGHT_CHANNEL=15
 # Each corner can override both shared pulse values, for example:
-SUSPENSION_FRONT_LEFT_BOTTOMED_US=1500
-SUSPENSION_FRONT_LEFT_RAISED_US=1500
+SUSPENSION_FRONT_LEFT_BOTTOMED_MS=1.5
+SUSPENSION_FRONT_LEFT_RAISED_MS=1.5
 ACTUATOR_WATCHDOG_SECONDS=0.25
 ACTUATOR_STARTUP_TIMEOUT_SECONDS=3.0
 FATAL_ERROR_LOG=/tmp/bobot-fatal.log
@@ -311,12 +311,14 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 
 In manual mode, the left bumper selects `bottomed` suspension and the right
 bumper selects `raised`. Outside manual mode, the right bumper retains its
-stability-score control. The shared suspension pulse defaults are both 1500 us
+stability-score control. The shared suspension pulse defaults are both 1.5 ms
 so newly connected linkages do not move before calibration. Set distinct
-`SUSPENSION_BOTTOMED_US` and `SUSPENSION_RAISED_US` values, or use the
-per-corner `SUSPENSION_<CORNER>_<STATE>_US` overrides when servo geometry or
+`SUSPENSION_BOTTOMED_MS` and `SUSPENSION_RAISED_MS` values, or use the
+per-corner `SUSPENSION_<CORNER>_<STATE>_MS` overrides when servo geometry or
 direction differs. The watchdog moves suspension to `SUSPENSION_FAILSAFE_STATE`
-if runtime heartbeats stop.
+if runtime heartbeats stop. Suspension millisecond values may be fractional and
+must remain between 0.5 and 2.5. Deprecated `_US` names are still read as a
+migration fallback, but new configuration should use `_MS` exclusively.
 
 ## Safety Rules
 

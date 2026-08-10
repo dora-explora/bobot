@@ -235,7 +235,8 @@ def motor_status(output, name):
 def suspension_status(output, name):
     channel = next(channel for output_name, channel, _, _ in SUSPENSION_OUTPUTS if output_name == name)
     pulse = output.last_suspension_pulses_us.get(name, None)
-    return name + "=" + str(channel) + "@" + str(pulse)
+    pulse_ms = "-" if pulse is None else str(round(pulse / 1000.0, 3)) + "ms"
+    return name + "=" + str(channel) + "@" + pulse_ms
 
 
 def draw(screen, steering, throttle, output, message):

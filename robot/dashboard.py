@@ -473,10 +473,16 @@ class TuiDashboard:
         return (
             "suspension " + actuators.suspension_state + " "
             + " ".join(
-                name + "@" + str(pulses.get(name, "-"))
+                name + "@" + TuiDashboard._pulse_ms(pulses.get(name))
                 for name in ("front_left", "front_right", "rear_left", "rear_right")
             )
         )
+
+    @staticmethod
+    def _pulse_ms(pulse_us):
+        if pulse_us is None:
+            return "-"
+        return str(round(pulse_us / 1000.0, 3)) + "ms"
 
     @staticmethod
     def _steering_bar(steering, terminal_width):

@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+import os
 
 from robot import config
 from robot.actuators import Pca9685Actuators, suspension_pulses
@@ -9,12 +10,21 @@ from robot.suspension import SuspensionControl
 
 
 class SuspensionControlTests(unittest.TestCase):
+    def test_millisecond_config_accepts_fractions_and_legacy_microseconds(self):
+        with patch.dict(os.environ, {"TEST_SERVO_MS": "1.75"}, clear=False):
+            self.assertEqual(config.env_servo_ms("TEST_SERVO_MS", "1.5"), 1.75)
+        with patch.dict(os.environ, {"TEST_SERVO_US": "1800"}, clear=False):
+            self.assertEqual(
+                config.env_servo_ms("MISSING_SERVO_MS", "1.5", "TEST_SERVO_US"),
+                1.8,
+            )
+
     def test_each_position_uses_its_per_corner_calibration(self):
         outputs = (
-            ("front_left", 12, 1100, 1900),
-            ("front_right", 13, 1200, 1800),
-            ("rear_left", 14, 1300, 1700),
-            ("rear_right", 15, 1400, 1600),
+            ("front_left", 12, 1.1, 1.9),
+            ("front_right", 13, 1.2, 1.8),
+            ("rear_left", 14, 1.3, 1.7),
+            ("rear_right", 15, 1.4, 1.6),
         )
         with patch.object(config, "SUSPENSION_OUTPUTS", outputs):
             self.assertEqual(suspension_pulses("bottomed")["front_left"], 1100)
