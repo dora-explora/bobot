@@ -2,7 +2,8 @@ import curses
 import os
 import time
 
-from robot.actuators import Pca9685Watchdog
+from robot import config
+from robot.actuators import Pca9685Watchdog, suspension_pulses
 
 
 STEERING_CHANNEL = int(os.environ.get("STEERING_CHANNEL", "0"))
@@ -38,6 +39,7 @@ MOTOR_OUTPUTS = (
     ("rear_left", MOTOR_REAR_LEFT_CHANNEL, MOTOR_REAR_LEFT_SIGN),
     ("rear_right", MOTOR_REAR_RIGHT_CHANNEL, MOTOR_REAR_RIGHT_SIGN),
 )
+SUSPENSION_OUTPUTS = config.SUSPENSION_OUTPUTS
 
 
 def pulse_triplet(name, fallback):
@@ -137,18 +139,41 @@ class Pca9685Output:
         self.last_throttle_us = None
         self.last_motor_values = {}
         self.last_motor_pulses_us = {}
-        neutral_pulses = {
+        self.suspension_enabled = config.SUSPENSION_ENABLED
+        self.suspension_state = config.SUSPENSION_START_STATE
+        self.last_suspension_pulses_us = suspension_pulses(self.suspension_state)
+        motor_neutral_pulses = {
             name: MOTOR_ESC_US[name][1]
             for name, _, _ in MOTOR_OUTPUTS
         }
+        outputs = tuple((name, channel) for name, channel, _ in MOTOR_OUTPUTS)
+        initial_pulses = dict(motor_neutral_pulses)
+        failsafe_pulses = dict(motor_neutral_pulses)
+        if self.suspension_enabled:
+            outputs += tuple(
+                ("suspension_" + name, channel)
+                for name, channel, _, _ in SUSPENSION_OUTPUTS
+            )
+            initial_pulses.update(
+                ("suspension_" + name, pulse)
+                for name, pulse in suspension_pulses(config.SUSPENSION_START_STATE).items()
+            )
+            failsafe_pulses.update(
+                ("suspension_" + name, pulse)
+                for name, pulse in suspension_pulses(config.SUSPENSION_FAILSAFE_STATE).items()
+            )
         self.watchdog = Pca9685Watchdog(
-            MOTOR_OUTPUTS,
-            neutral_pulses,
+            outputs,
+            initial_pulses,
+            failsafe_pulses,
             ACTUATOR_WATCHDOG_SECONDS,
             ACTUATOR_STARTUP_TIMEOUT_SECONDS,
         )
 
-    def apply(self, steering, throttle):
+    def apply(self, steering, throttle, suspension_state=None):
+        if suspension_state is not None:
+            self.suspension_state = suspension_state
+            self.last_suspension_pulses_us = suspension_pulses(suspension_state)
         motor_values = motor_mix(steering, throttle)
         motor_pulses_us = {
             name: normalized_to_throttle_pulse(value, MOTOR_ESC_US[name])
@@ -159,7 +184,13 @@ class Pca9685Output:
         self.last_motor_values = motor_values
         self.last_motor_pulses_us = motor_pulses_us
 
-        self.watchdog.apply_pulses(motor_pulses_us)
+        pulses = dict(motor_pulses_us)
+        if self.suspension_enabled:
+            pulses.update(
+                ("suspension_" + name, pulse)
+                for name, pulse in self.last_suspension_pulses_us.items()
+            )
+        self.watchdog.apply_pulses(pulses)
 
     def neutralize(self):
         self.apply(0.0, 0.0)
@@ -201,6 +232,12 @@ def motor_status(output, name):
     return str(round(value, 3)) + "@" + str(pulse)
 
 
+def suspension_status(output, name):
+    channel = next(channel for output_name, channel, _, _ in SUSPENSION_OUTPUTS if output_name == name)
+    pulse = output.last_suspension_pulses_us.get(name, None)
+    return name + "=" + str(channel) + "@" + str(pulse)
+
+
 def draw(screen, steering, throttle, output, message):
     height, width = screen.getmaxyx()
     lines = [
@@ -234,10 +271,21 @@ def draw(screen, steering, throttle, output, message):
         ),
         throttle_bar(throttle, width),
         "",
+        "[Suspension]",
+        "enabled=" + str(output.suspension_enabled)
+        + " state=" + output.suspension_state
+        + " start=" + config.SUSPENSION_START_STATE
+        + " failsafe=" + config.SUSPENSION_FAILSAFE_STATE,
+        suspension_status(output, "front_left")
+        + " " + suspension_status(output, "front_right"),
+        suspension_status(output, "rear_left")
+        + " " + suspension_status(output, "rear_right"),
+        "",
         "[Keys]",
         "A center turn        S full left    D full right",
         "J/I throttle +step/full forward    L/M throttle -step/full reverse",
         "K neutral throttle   W/E turn -/+ step",
+        "B bottom suspension  R raise suspension",
         "Space all neutral    Q quit",
         "",
         "[Status]",
@@ -307,6 +355,14 @@ def run(screen, output):
         elif key == "l":
             throttle = clamp(throttle - THROTTLE_STEP, -1.0, 1.0)
             message = "Throttle stepped reverse."
+        elif key == "b":
+            output.apply(steering, throttle, "bottomed")
+            message = "Suspension bottomed."
+            continue
+        elif key == "r":
+            output.apply(steering, throttle, "raised")
+            message = "Suspension raised."
+            continue
         else:
             message = "Unknown key: " + repr(key)
 

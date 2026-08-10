@@ -332,7 +332,9 @@ if runtime heartbeats stop.
   confirms its selection.
 - Detector output is disabled whenever detector is selected and must be
   explicitly enabled with A.
-- `manual_control.py` can send full forward and reverse; use it only with wheels off the ground.
+- `manual_control.py` can send full forward and reverse; use it only with wheels
+  off the ground. Its B/R keys select bottomed/raised suspension using the same
+  calibration and fail-safe environment variables as `main.py`.
 - Use Ctrl-C to exit; the program neutralizes all four motor channels in its shutdown path.
 - Add a physical kill switch before any fast or untethered run.
 - PCA9685 output is owned by a separate watchdog process. It receives a fresh
