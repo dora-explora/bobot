@@ -16,6 +16,8 @@ class ControllerUpdate:
     stability_pressed: bool = False
     left_bumper_pressed: bool = False
     right_bumper_pressed: bool = False
+    front_suspension_pressed: bool = False
+    rear_suspension_pressed: bool = False
     throttle_limit_delta: int = 0
     controller_lost: bool = False
 
@@ -36,6 +38,7 @@ class ControllerInput:
         self._menu_stick_source = "right"
         self._menu_input_sequence = 0
         self._menu_stick_sequence = {"left": 0, "right": 0}
+        self._trigger_active = {"left": False, "right": False}
         self._connect()
 
     def _connect(self):
@@ -126,6 +129,8 @@ class ControllerInput:
                     update.left_bumper_pressed |= event.code == config.CONTROLLER_LEFT_BUMPER_BUTTON
                     update.right_bumper_pressed |= event.code == config.CONTROLLER_RIGHT_BUMPER_BUTTON
                     update.stability_pressed |= event.code == config.CONTROLLER_STABILITY_BUTTON
+                    update.front_suspension_pressed |= event.code == config.CONTROLLER_LEFT_TRIGGER_BUTTON
+                    update.rear_suspension_pressed |= event.code == config.CONTROLLER_RIGHT_TRIGGER_BUTTON
                 if event.value != 1:
                     continue
                 if event.code == config.CONTROLLER_A_BUTTON:
@@ -142,6 +147,15 @@ class ControllerInput:
                     update.throttle_limit_delta -= 1
             elif event.type == self.ecodes.EV_ABS:
                 self.axis_values[event.code] = event.value
+                trigger = self._trigger_for_axis(event.code)
+                if trigger is not None:
+                    active = self._axis_fraction(event.code) >= config.CONTROLLER_TRIGGER_THRESHOLD
+                    newly_pressed = active and not self._trigger_active[trigger]
+                    self._trigger_active[trigger] = active
+                    if trigger == "left":
+                        update.front_suspension_pressed |= newly_pressed
+                    else:
+                        update.rear_suspension_pressed |= newly_pressed
                 if event.code == config.CONTROLLER_DPAD_Y_AXIS:
                     if event.value < 0:
                         update.throttle_limit_delta += 1
@@ -215,6 +229,13 @@ class ControllerInput:
             "D-pad axis=" + str(config.CONTROLLER_DPAD_Y_AXIS)
             + " buttons up/down=" + str(config.CONTROLLER_DPAD_UP_BUTTON)
             + "/" + str(config.CONTROLLER_DPAD_DOWN_BUTTON),
+            "triggers axes L/R=" + str(config.CONTROLLER_LEFT_TRIGGER_AXIS)
+            + "/" + str(config.CONTROLLER_RIGHT_TRIGGER_AXIS)
+            + " buttons=" + str(config.CONTROLLER_LEFT_TRIGGER_BUTTON)
+            + "/" + str(config.CONTROLLER_RIGHT_TRIGGER_BUTTON)
+            + " raw=" + str(self.axis_values.get(config.CONTROLLER_LEFT_TRIGGER_AXIS, "n/a"))
+            + "/" + str(self.axis_values.get(config.CONTROLLER_RIGHT_TRIGGER_AXIS, "n/a"))
+            + " threshold=" + str(config.CONTROLLER_TRIGGER_THRESHOLD),
             "detected axes=" + self._code_list(self.supported_axis_codes, self._axis_name),
             "detected keys=" + self._code_list(self.supported_key_codes, self._key_name),
         ] + (["error=" + self.error] if self.error else [])
@@ -239,6 +260,13 @@ class ControllerInput:
         normalized = (value - minimum) / float(maximum - minimum) * 2.0 - 1.0
         return -normalized if invert else normalized
 
+    def _axis_fraction(self, code):
+        value = self.axis_values.get(code)
+        minimum, maximum = self.axis_ranges.get(code, (0, 255))
+        if value is None or maximum <= minimum:
+            return 0.0
+        return clamp((value - minimum) / float(maximum - minimum), 0.0, 1.0)
+
     def _stick_axes(self):
         return (
             config.CONTROLLER_LEFT_X_AXIS,
@@ -252,6 +280,14 @@ class ControllerInput:
         if code in (config.CONTROLLER_LEFT_X_AXIS, config.CONTROLLER_LEFT_Y_AXIS):
             return "left"
         if code in (config.CONTROLLER_RIGHT_X_AXIS, config.CONTROLLER_RIGHT_Y_AXIS):
+            return "right"
+        return None
+
+    @staticmethod
+    def _trigger_for_axis(code):
+        if code == config.CONTROLLER_LEFT_TRIGGER_AXIS:
+            return "left"
+        if code == config.CONTROLLER_RIGHT_TRIGGER_AXIS:
             return "right"
         return None
 

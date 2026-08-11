@@ -243,6 +243,11 @@ CONTROLLER_CAPTURE_BUTTON=308
 CONTROLLER_STABILITY_BUTTON=311
 CONTROLLER_LEFT_BUMPER_BUTTON=310
 CONTROLLER_RIGHT_BUMPER_BUTTON=311
+CONTROLLER_LEFT_TRIGGER_AXIS=2
+CONTROLLER_RIGHT_TRIGGER_AXIS=5
+CONTROLLER_TRIGGER_THRESHOLD=0.5
+CONTROLLER_LEFT_TRIGGER_BUTTON=312
+CONTROLLER_RIGHT_TRIGGER_BUTTON=313
 CONTROLLER_LEFT_X_AXIS=0
 CONTROLLER_LEFT_Y_AXIS=1
 CONTROLLER_RIGHT_X_AXIS=3
@@ -311,7 +316,10 @@ in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 
 In manual mode, the left bumper selects `bottomed` suspension and the right
 bumper selects `raised`. Outside manual mode, the right bumper retains its
-stability-score control. The shared suspension pulse defaults are both 1.5 ms
+stability-score control. The left trigger selects `front_bottomed` (rear raised)
+and the right trigger selects `rear_bottomed` (front raised). Analog trigger
+axes and digital trigger-button events are both supported. The shared
+suspension pulse defaults are both 1.5 ms
 so newly connected linkages do not move before calibration. Set distinct
 `SUSPENSION_BOTTOMED_MS` and `SUSPENSION_RAISED_MS` values, or use the
 per-corner `SUSPENSION_<CORNER>_<STATE>_MS` overrides when servo geometry or

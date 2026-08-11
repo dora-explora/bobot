@@ -210,7 +210,7 @@ class ManualState:
                 right=right,
             ),
             state_lines=self.controller.debug_lines() + [
-                "LB=bottom suspension RB=raise suspension",
+                "LB=bottom all RB=raise all LT=bottom front RT=bottom rear",
                 "scaled motor input left=" + str(round(left, 3))
                 + " right=" + str(round(right, 3))
                 + " limit=" + str(config.THROTTLE_LIMIT),
@@ -506,7 +506,8 @@ def run():
                     )
             menu_stick, menu_stick_source = controller.menu_stick()
             decision = mode_control.update(controller_update, menu_stick, menu_stick_source)
-            suspension_action = suspension.update(mode_control.active_state, controller_update)
+            suspension_context = "menu" if mode_control.menu_active else mode_control.active_state
+            suspension_action = suspension.update(suspension_context, controller_update)
             if suspension_action:
                 mode_control.last_action = suspension_action
                 if not dashboard.enabled:

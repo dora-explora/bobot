@@ -32,11 +32,16 @@ def throttle_pulse(command, esc_us):
 
 
 def suspension_pulses(state):
-    if state not in ("bottomed", "raised"):
-        raise ValueError("suspension state must be bottomed or raised")
-    index = 2 if state == "bottomed" else 3
+    if state not in config.SUSPENSION_STATES:
+        raise ValueError("invalid suspension state: " + state)
+    bottomed_names = {
+        "bottomed": {"front_left", "front_right", "rear_left", "rear_right"},
+        "raised": set(),
+        "front_bottomed": {"front_left", "front_right"},
+        "rear_bottomed": {"rear_left", "rear_right"},
+    }[state]
     return {
-        output[0]: int(round(output[index] * 1000.0))
+        output[0]: int(round(output[2 if output[0] in bottomed_names else 3] * 1000.0))
         for output in config.SUSPENSION_OUTPUTS
     }
 

@@ -36,6 +36,8 @@ def controller_with_events(events):
         config.CONTROLLER_LEFT_Y_AXIS: (-32768, 32767),
         config.CONTROLLER_RIGHT_X_AXIS: (-32768, 32767),
         config.CONTROLLER_RIGHT_Y_AXIS: (-32768, 32767),
+        config.CONTROLLER_LEFT_TRIGGER_AXIS: (0, 255),
+        config.CONTROLLER_RIGHT_TRIGGER_AXIS: (0, 255),
     }
     controller.supported_axis_codes = []
     controller.supported_key_codes = []
@@ -43,6 +45,7 @@ def controller_with_events(events):
     controller._menu_stick_source = "right"
     controller._menu_input_sequence = 0
     controller._menu_stick_sequence = {"left": 0, "right": 0}
+    controller._trigger_active = {"left": False, "right": False}
     return controller
 
 
@@ -56,6 +59,8 @@ class ControllerInputTests(unittest.TestCase):
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_STABILITY_BUTTON, value=1),
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_LEFT_BUMPER_BUTTON, value=1),
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_RIGHT_BUMPER_BUTTON, value=1),
+            SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_LEFT_TRIGGER_BUTTON, value=1),
+            SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_RIGHT_TRIGGER_BUTTON, value=1),
         ])
 
         update = controller.poll()
@@ -67,6 +72,8 @@ class ControllerInputTests(unittest.TestCase):
         self.assertTrue(update.stability_pressed)
         self.assertTrue(update.left_bumper_pressed)
         self.assertTrue(update.right_bumper_pressed)
+        self.assertTrue(update.front_suspension_pressed)
+        self.assertTrue(update.rear_suspension_pressed)
         self.assertFalse(update.y_released)
 
     def test_button_release_and_unmapped_input_do_not_change_modes(self):
@@ -133,6 +140,26 @@ class ControllerInputTests(unittest.TestCase):
         self.assertGreater(menu_x, 0.9)
         self.assertAlmostEqual(menu_y, 0.0, places=3)
 
+    def test_analog_triggers_emit_only_on_press_edges(self):
+        controller = controller_with_events([
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=200),
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_RIGHT_TRIGGER_AXIS, value=200),
+        ])
+
+        update = controller.poll()
+        self.assertTrue(update.front_suspension_pressed)
+        self.assertTrue(update.rear_suspension_pressed)
+
+        controller.device.events = [
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=220),
+        ]
+        self.assertFalse(controller.poll().front_suspension_pressed)
+
+        controller.device.events = [
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=0),
+            SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=255),
+        ]
+        self.assertTrue(controller.poll().front_suspension_pressed)
 
 if __name__ == "__main__":
     unittest.main()

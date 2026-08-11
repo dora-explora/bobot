@@ -31,6 +31,12 @@ class SuspensionControlTests(unittest.TestCase):
             self.assertEqual(suspension_pulses("bottomed")["rear_right"], 1400)
             self.assertEqual(suspension_pulses("raised")["front_left"], 1900)
             self.assertEqual(suspension_pulses("raised")["rear_right"], 1600)
+            front = suspension_pulses("front_bottomed")
+            self.assertEqual(front["front_left"], 1100)
+            self.assertEqual(front["rear_left"], 1700)
+            rear = suspension_pulses("rear_bottomed")
+            self.assertEqual(rear["front_right"], 1800)
+            self.assertEqual(rear["rear_right"], 1400)
 
     def test_disabled_actuators_still_report_requested_position(self):
         with patch.object(config, "ENABLE_ACTUATORS", False):
@@ -63,6 +69,22 @@ class SuspensionControlTests(unittest.TestCase):
 
         self.assertEqual(message, "")
         self.assertEqual(suspension.state, "bottomed")
+
+        message = suspension.update(
+            "menu",
+            ControllerUpdate(front_suspension_pressed=True),
+        )
+        self.assertEqual(message, "")
+        self.assertEqual(suspension.state, "bottomed")
+
+    def test_triggers_select_front_or_rear_bottomed(self):
+        suspension = SuspensionControl("raised")
+
+        suspension.update("manual", ControllerUpdate(front_suspension_pressed=True))
+        self.assertEqual(suspension.state, "front_bottomed")
+
+        suspension.update("manual", ControllerUpdate(rear_suspension_pressed=True))
+        self.assertEqual(suspension.state, "rear_bottomed")
 
     def test_simultaneous_bumpers_do_not_move_suspension(self):
         suspension = SuspensionControl("bottomed")

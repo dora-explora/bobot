@@ -92,7 +92,7 @@ class TuiDashboard:
                 "Robot Code TUI",
                 "[State] active=" + state_name + " menu=" + str(mode_control.menu_active)
                 + " available=" + ",".join(mode_control.available_states),
-                "controls A=manual B=static hold-Y=menu D-pad=limit manual-LB/RB=suspension",
+                "controls A=manual B=static hold-Y=menu D-pad=limit manual bumpers/triggers=suspension",
                 "last_action=" + mode_control.last_action,
                 "[Status] camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1))
@@ -108,7 +108,7 @@ class TuiDashboard:
                 "Robot Code TUI", "==============", "",
                 "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
                 + "  available=" + ",".join(mode_control.available_states),
-                "controls: A=manual B=static hold Y=menu D-pad=limit manual LB/RB=suspension",
+                "controls: A=manual B=static hold Y=menu D-pad=limit manual bumpers/triggers=suspension",
                 "last_action=" + mode_control.last_action, "",
                 "[Status]", "camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),
@@ -146,7 +146,7 @@ class TuiDashboard:
             return lines
 
         if state_name == "manual":
-            lines.extend(["[Manual Controller]", "Sticks tank drive; LB bottoms suspension; RB raises it. B=static Y=menu."])
+            lines.extend(["[Manual Controller]", "LB=bottom all RB=raise all LT=bottom front RT=bottom rear. B=static Y=menu."])
             lines.extend(result.state_lines)
         elif state_name == "static":
             lines.extend(["[Static]", "Motor output is neutral by design. A=manual Y=menu."])
