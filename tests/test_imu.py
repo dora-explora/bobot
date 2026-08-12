@@ -145,6 +145,7 @@ class BNO085ServiceTests(unittest.TestCase):
         self.assertFalse(snapshot.connected)
         self.assertEqual(snapshot.timestamp, 99.0)
         self.assertIn("I2C bus unavailable", snapshot.error)
+        self.assertTrue(snapshot.i2c_fault)
         self.assertIsNone(snapshot.roll_degrees)
 
     def test_read_failure_is_reported_without_discarding_other_values(self):
@@ -159,6 +160,27 @@ class BNO085ServiceTests(unittest.TestCase):
         self.assertIsNone(snapshot.roll_degrees)
         self.assertEqual(snapshot.acceleration, (1.0, 2.0, 3.0))
         self.assertEqual(snapshot.gyro, (0.1, 0.2, 0.3))
+
+    def test_i2c_read_failure_disconnects_for_retry_without_raising(self):
+        class FailedSensor(FakeSensor):
+            @property
+            def quaternion(self):
+                raise OSError(121, "Remote I/O error")
+
+            @quaternion.setter
+            def quaternion(self, value):
+                pass
+
+        service = service_for_sensor(FailedSensor())
+
+        snapshot = service.read()
+
+        self.assertFalse(snapshot.connected)
+        self.assertTrue(snapshot.i2c_fault)
+        self.assertFalse(service.connected)
+        self.assertIn("Remote I/O error", snapshot.error)
+
+        self.assertTrue(service.read().i2c_fault)
 
 
 if __name__ == "__main__":

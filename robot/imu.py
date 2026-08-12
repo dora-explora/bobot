@@ -22,6 +22,7 @@ class IMUSnapshot:
     connected: bool
     error: str
     timestamp: float
+    i2c_fault: bool = False
     roll_degrees: float | None = None
     pitch_degrees: float | None = None
     yaw_degrees: float | None = None
@@ -119,6 +120,7 @@ class BNO085Service:
         self._connected = False
         self._connection_warning = ""
         self._error = ""
+        self._i2c_fault = False
         self._baseline: tuple[float, float, float] | None = None
         self._last_angles: tuple[float, float, float] | None = None
         self._reports_enabled: tuple[str, ...] = ()
@@ -172,6 +174,7 @@ class BNO085Service:
         self._i2c = i2c
         self._sensor = sensor
         self._connected = True
+        self._i2c_fault = False
         self._reports_enabled = tuple(enabled)
         self._connection_warning = "; ".join(warnings)
         self._error = self._connection_warning
@@ -185,9 +188,11 @@ class BNO085Service:
                 connected=False,
                 error=self._error or "BNO085 is not connected",
                 timestamp=timestamp,
+                i2c_fault=self._i2c_fault,
             )
 
         errors = [self._connection_warning] if self._connection_warning else []
+        read_failures = []
         angles = None
         deltas = None
         acceleration = None
@@ -211,22 +216,34 @@ class BNO085Service:
             )
         except Exception as error:
             errors.append("orientation read failed: " + str(error))
+            read_failures.append(error)
 
         try:
             acceleration = _three_axis_tuple(self._sensor.acceleration, "acceleration")
         except Exception as error:
             errors.append("acceleration read failed: " + str(error))
+            read_failures.append(error)
 
         try:
             gyro = _three_axis_tuple(self._sensor.gyro, "gyro")
         except Exception as error:
             errors.append("gyro read failed: " + str(error))
+            read_failures.append(error)
 
         self._error = "; ".join(error for error in errors if error)
+        i2c_fault = any(_is_i2c_error(error) for error in read_failures)
+        # A dead bus commonly makes all reports fail with generic RuntimeErrors.
+        i2c_fault = i2c_fault or len(read_failures) == 3
+        if i2c_fault:
+            error_text = self._error
+            self.close()
+            self._error = error_text
+            self._i2c_fault = True
         return IMUSnapshot(
             connected=self._connected,
             error=self._error,
             timestamp=timestamp,
+            i2c_fault=i2c_fault,
             roll_degrees=None if angles is None else angles[0],
             pitch_degrees=None if angles is None else angles[1],
             yaw_degrees=None if angles is None else angles[2],
@@ -263,6 +280,7 @@ class BNO085Service:
         self._reports_enabled = ()
         self._connection_warning = ""
         self._error = "BNO085 connection failed: " + str(error)
+        self._i2c_fault = _is_i2c_error(error)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -283,6 +301,20 @@ def _three_axis_tuple(
     if len(result) != 3 or not all(math.isfinite(value) for value in result):
         raise ValueError(label + " must contain three finite values")
     return result
+
+
+def _is_i2c_error(error: Exception) -> bool:
+    if isinstance(error, OSError):
+        return True
+    message = str(error).lower()
+    return any(fragment in message for fragment in (
+        "i2c",
+        "input/output",
+        "remote i/o",
+        "errno 5",
+        "errno 121",
+        "device not ready",
+    ))
 
 
 def _default_i2c_factory():

@@ -445,6 +445,7 @@ def run():
     last_frame_time = 0.0
     last_telemetry = 0.0
     last_imu_connect_attempt = time.time()
+    last_actuator_error = ""
     fps = 0.0
     try:
         actuators = Pca9685Actuators()
@@ -540,8 +541,27 @@ def run():
                 horizon,
                 controller_update,
             )
-            output_command = mode_control.gate_command(result.command, decision.neutralize_this_frame)
-            actuators.apply(output_command, suspension.state)
+            imu_i2c_fault = bool(getattr(attitude, "i2c_fault", False))
+            output_command = mode_control.gate_command(
+                result.command,
+                decision.neutralize_this_frame or imu_i2c_fault,
+            )
+            if imu_i2c_fault:
+                mode_control.last_action = "IMU I2C fault; outputs neutral pending reconnect"
+            try:
+                actuators.apply(output_command, suspension.state)
+                last_actuator_error = ""
+            except (EOFError, OSError, RuntimeError) as error:
+                error_text = "Actuator I2C/watchdog fault; retaining loop in neutral: " + str(error)
+                if error_text != last_actuator_error:
+                    print(error_text, file=sys.stderr, flush=True)
+                    last_actuator_error = error_text
+                mode_control.last_action = error_text
+                output_command = DriveCommand(mode="static", reason="actuator I2C fault")
+                try:
+                    actuators.neutralize()
+                except (EOFError, OSError, RuntimeError):
+                    pass
             dashboard.draw(
                 frame,
                 mode_control,
