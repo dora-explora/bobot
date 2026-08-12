@@ -14,6 +14,7 @@ from robot.actuators import Pca9685Actuators
 from robot.bucket_detection import BucketDetection
 from robot.camera import open_camera
 from robot.capture_state import CaptureState
+from robot.climb import ClimbState
 from robot.cone_slalom import ConeSlalom
 from robot.controller import ControllerInput
 from robot.dashboard import TuiDashboard
@@ -253,6 +254,7 @@ COURSE_SECTIONS = {
     "detector": DetectorState,
     "manual": ManualState,
     "capture": CaptureState,
+    "climb": ClimbState,
     "bucket": BucketDetection,
     "cone_slalom": ConeSlalom,
     "rough_section": RoughSection,
@@ -324,6 +326,8 @@ def print_telemetry(result, mode_control, output_command, stability):
           "output_mode=" + output_command.mode, "output_reason=" + output_command.reason,
           "left=" + str(None if command.left is None else round(command.left, 3)),
           "right=" + str(None if command.right is None else round(command.right, 3)),
+          "pinch=" + str(round(output_command.pinch, 3)),
+          "winch=" + str(round(output_command.winch, 3)),
           "throttle_limit=" + str(round(config.THROTTLE_LIMIT, 3)),
           "stable=" + debug.stable_target_label, "priority=" + str(round(debug.priority_score, 3)),
           "imu=" + ("connected" if attitude is not None and attitude.connected else "offline"),
@@ -430,6 +434,7 @@ def run():
         "detector": DetectorState(),
         "manual": ManualState(controller),
         "capture": CaptureState(),
+        "climb": ClimbState(controller),
     }
     mode_control = ModeControl(ACTIVE_STATE)
     stability = StabilityScorer()

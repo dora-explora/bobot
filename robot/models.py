@@ -60,6 +60,8 @@ class DriveCommand:
     # When absent, actuator output is derived from steering and throttle.
     left: float | None = None
     right: float | None = None
+    pinch: float = 0.0
+    winch: float = 0.0
 
 
 @dataclass

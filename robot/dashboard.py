@@ -141,6 +141,7 @@ class TuiDashboard:
                 + " throttle=" + str(round(command.throttle, 3)),
                 "output mode=" + output_command.mode + " reason=" + output_command.reason,
                 self._motors(actuators),
+                self._climb(actuators),
                 self._suspension(actuators),
             ])
             return lines
@@ -153,6 +154,9 @@ class TuiDashboard:
             lines.extend(result.state_lines)
         elif state_name == "capture":
             lines.extend(["[Capture]", "Motor output is neutral by design."])
+            lines.extend(result.state_lines)
+        elif state_name == "climb":
+            lines.extend(["[Climb]", "Drivetrain neutral; right stick controls climb motors momentarily."])
             lines.extend(result.state_lines)
         else:
             lines.extend([
@@ -181,13 +185,13 @@ class TuiDashboard:
                       "output mode=" + output_command.mode + " reason=" + output_command.reason,
                       "raw=" + str(round(debug.raw_steering, 3)) + " smoothed=" + str(round(debug.smoothed_steering, 3))
                       + " slew_limited=" + str(debug.steering_limited), self._steering_bar(command.steering, width),
-                      self._motors(actuators), self._suspension(actuators)])
+                      self._motors(actuators), self._climb(actuators), self._suspension(actuators)])
         lines.extend([""])
         lines.extend(self._imu_lines(result.attitude, result.horizon, width, compact))
         if state_name == "detector":
             lines.extend(["", "[Cone Slalom]"])
             lines.extend(result.state_lines)
-        if state_name in ("manual", "static", "capture"):
+        if state_name in ("manual", "static", "capture", "climb"):
             return lines
         if not compact:
             lines.extend(["", "[Tuning]", "ball area min=" + str(config.MIN_BALL_AREA_RATIO) + " top_scale=" + str(config.MIN_BALL_AREA_TOP_SCALE)
@@ -448,11 +452,12 @@ class TuiDashboard:
         detector = label("detector")
         static = label("static")
         manual = label("manual")
+        climb = label("climb")
         capture = label("capture")
         gap = max(1, width - len(static) - len(manual))
         return [
             centered(detector),
-            centered(""),
+            centered("       " + climb),
             centered("|"),
             static + (" " * gap) + manual,
             centered("|"),
@@ -466,6 +471,14 @@ class TuiDashboard:
     def _motors(actuators):
         values, pulses = actuators.last_motor_values, actuators.last_motor_pulses_us
         return "motors " + " ".join(name + "=" + str(round(values.get(name, 0.0), 3)) + "@" + str(pulses.get(name, "-")) for name in ("front_left", "front_right", "rear_left", "rear_right"))
+
+    @staticmethod
+    def _climb(actuators):
+        return "climb " + " ".join(
+            name + "=" + str(round(actuators.last_climb_values.get(name, 0.0), 3))
+            + "@" + str(actuators.last_climb_pulses_us.get(name, "-"))
+            for name in ("pinch", "winch")
+        )
 
     @staticmethod
     def _suspension(actuators):

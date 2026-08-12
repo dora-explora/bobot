@@ -5,7 +5,7 @@ import math
 from robot.models import DriveCommand
 
 
-MENU_OPTIONS = ("detector", "manual", "capture", "static")
+MENU_OPTIONS = ("detector", "climb", "manual", "capture", "static")
 
 
 @dataclass
@@ -53,7 +53,7 @@ class ModeControl:
             return False
         if self.active_state == "detector":
             return self.detector_throttle_enabled
-        return self.active_state == "manual"
+        return self.active_state in ("manual", "climb")
 
     @property
     def output_status(self):
@@ -126,12 +126,13 @@ class ModeControl:
 
     @staticmethod
     def radial_selection(menu_stick):
-        """Map either controller stick to four cardinal radial sectors."""
+        """Map either controller stick to the five radial state sectors."""
         x, y = menu_stick
         if math.hypot(x, y) <= 0.0:
             return None
         directions = {
             "detector": (0.0, 1.0),
+            "climb": (math.sqrt(0.5), math.sqrt(0.5)),
             "manual": (1.0, 0.0),
             "capture": (0.0, -1.0),
             "static": (-1.0, 0.0),

@@ -171,6 +171,18 @@ class ControllerInput:
     def tank_sides(self):
         return self._vertical_axis(config.CONTROLLER_LEFT_Y_AXIS), self._vertical_axis(config.CONTROLLER_RIGHT_Y_AXIS)
 
+    def climb_axis(self):
+        """Return signed right-stick vertical input using the climb deadzone."""
+        normalized = self._normalized_axis(
+            config.CONTROLLER_RIGHT_Y_AXIS,
+            invert=config.CONTROLLER_INVERT_Y,
+        )
+        deadzone = clamp(config.CLIMB_STICK_DEADZONE, 0.0, 0.95)
+        if abs(normalized) <= deadzone:
+            return 0.0
+        scaled = (abs(normalized) - deadzone) / (1.0 - deadzone)
+        return clamp(scaled, 0.0, 1.0) * (1.0 if normalized > 0 else -1.0)
+
     def right_stick(self):
         """Return the right-stick radial-menu vector for compatibility/debugging."""
         return self._stick_vector(config.CONTROLLER_RIGHT_X_AXIS, config.CONTROLLER_RIGHT_Y_AXIS)

@@ -206,6 +206,15 @@ MOTOR_FRONT_LEFT_ESC_US=1400,1500,1600
 MOTOR_FRONT_RIGHT_ESC_US=1400,1500,1600
 MOTOR_REAR_LEFT_ESC_US=1400,1500,1600
 MOTOR_REAR_RIGHT_ESC_US=1400,1500,1600
+CLIMB_PINCH_CHANNEL=5
+CLIMB_WINCH_CHANNEL=4
+CLIMB_PINCH_NEUTRAL_US=1500
+CLIMB_PINCH_FORWARD_US=1600
+CLIMB_WINCH_NEUTRAL_US=1500
+CLIMB_WINCH_FORWARD_US=1600
+CLIMB_PINCH_LIMIT=0.25
+CLIMB_WINCH_LIMIT=0.25
+CLIMB_STICK_DEADZONE=0.10
 SUSPENSION_ENABLED=true
 SUSPENSION_START_STATE=bottomed
 SUSPENSION_FAILSAFE_STATE=raised
@@ -313,6 +322,14 @@ written per scoring window.
 Each `MOTOR_*_ESC_US` value is one compact `reverse,neutral,forward` triplet
 in microseconds. It overrides the shared `THROTTLE_REVERSE_US`,
 `THROTTLE_NEUTRAL_US`, and `THROTTLE_FORWARD_US` fallback for that ESC only.
+
+Climb is selected from the upper-right radial-menu sector. In climb mode,
+right-stick up proportionally drives the channel 5 pinch motor and right-stick
+down proportionally drives the channel 4 winch. Center, B, menu entry,
+controller loss, shutdown, and watchdog timeout all neutralize both outputs.
+The climb motors are unidirectional: each has independent neutral/forward pulse
+calibration and a hard output limit. `manual_control.py` provides U/O/P for
+pinch step/full/neutral and V/N/C for winch step/full/neutral.
 
 In manual mode, the left bumper selects `bottomed` suspension and the right
 bumper selects `raised`. Outside manual mode, the right bumper retains its

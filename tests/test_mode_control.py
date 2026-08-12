@@ -77,10 +77,22 @@ class ModeControlTests(unittest.TestCase):
 
     def test_stick_selects_each_radial_sector(self):
         self.assertEqual(ModeControl.radial_selection((0.0, 1.0)), "detector")
+        self.assertEqual(ModeControl.radial_selection((1.0, 1.0)), "climb")
         self.assertEqual(ModeControl.radial_selection((1.0, 0.0)), "manual")
         self.assertEqual(ModeControl.radial_selection((0.0, -1.0)), "capture")
         self.assertEqual(ModeControl.radial_selection((-1.0, 0.0)), "static")
         self.assertIsNone(ModeControl.radial_selection((0.0, 0.0)))
+
+    def test_climb_is_enabled_but_b_neutralizes_and_enters_static(self):
+        modes = ModeControl("climb")
+        command = DriveCommand(mode="climb", pinch=0.5)
+        self.assertIs(modes.gate_command(command), command)
+
+        decision = modes.update(ControllerUpdate(b_pressed=True), (0.0, 0.0))
+        gated = modes.gate_command(command, decision.neutralize_this_frame)
+        self.assertEqual(modes.active_state, "static")
+        self.assertEqual(gated.pinch, 0.0)
+        self.assertEqual(gated.winch, 0.0)
 
     def test_capture_state_never_enables_output(self):
         modes = ModeControl("capture")
@@ -116,6 +128,12 @@ class ModeControlTests(unittest.TestCase):
 
         self.assertEqual(modes.active_state, "static")
         self.assertTrue(decision.neutralize_this_frame)
+
+    def test_climb_remains_available_without_camera(self):
+        modes = ModeControl("climb", unavailable_states=("detector", "capture"))
+
+        self.assertEqual(modes.active_state, "climb")
+        self.assertIn("climb", modes.available_states)
 
 
 if __name__ == "__main__":

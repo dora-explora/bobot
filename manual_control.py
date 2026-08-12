@@ -30,6 +30,7 @@ THROTTLE_FORWARD_US = int(os.environ.get("THROTTLE_FORWARD_US", "1600"))
 THROTTLE_REVERSE_US = int(os.environ.get("THROTTLE_REVERSE_US", "1400"))
 STEERING_STEP = float(os.environ.get("MANUAL_STEERING_STEP", "0.05"))
 THROTTLE_STEP = float(os.environ.get("MANUAL_THROTTLE_STEP", "0.02"))
+CLIMB_STEP = float(os.environ.get("MANUAL_CLIMB_STEP", "0.05"))
 ACTUATOR_WATCHDOG_SECONDS = float(os.environ.get("ACTUATOR_WATCHDOG_SECONDS", "0.25"))
 ACTUATOR_STARTUP_TIMEOUT_SECONDS = float(os.environ.get("ACTUATOR_STARTUP_TIMEOUT_SECONDS", "3.0"))
 
@@ -139,6 +140,10 @@ class Pca9685Output:
         self.last_throttle_us = None
         self.last_motor_values = {}
         self.last_motor_pulses_us = {}
+        self.last_climb_values = {"pinch": 0.0, "winch": 0.0}
+        self.last_climb_pulses_us = {
+            name: neutral_us for name, _, neutral_us, _ in config.CLIMB_OUTPUTS
+        }
         self.suspension_enabled = config.SUSPENSION_ENABLED
         self.suspension_state = config.SUSPENSION_START_STATE
         self.last_suspension_pulses_us = suspension_pulses(self.suspension_state)
@@ -149,6 +154,12 @@ class Pca9685Output:
         outputs = tuple((name, channel) for name, channel, _ in MOTOR_OUTPUTS)
         initial_pulses = dict(motor_neutral_pulses)
         failsafe_pulses = dict(motor_neutral_pulses)
+        outputs += tuple((name, channel) for name, channel, _, _ in config.CLIMB_OUTPUTS)
+        climb_neutral = {
+            name: neutral_us for name, _, neutral_us, _ in config.CLIMB_OUTPUTS
+        }
+        initial_pulses.update(climb_neutral)
+        failsafe_pulses.update(climb_neutral)
         if self.suspension_enabled:
             outputs += tuple(
                 ("suspension_" + name, channel)
@@ -170,7 +181,7 @@ class Pca9685Output:
             ACTUATOR_STARTUP_TIMEOUT_SECONDS,
         )
 
-    def apply(self, steering, throttle, suspension_state=None):
+    def apply(self, steering, throttle, suspension_state=None, pinch=0.0, winch=0.0):
         if suspension_state is not None:
             self.suspension_state = suspension_state
             self.last_suspension_pulses_us = suspension_pulses(suspension_state)
@@ -183,8 +194,19 @@ class Pca9685Output:
         self.last_throttle_us = None
         self.last_motor_values = motor_values
         self.last_motor_pulses_us = motor_pulses_us
+        requested = {"pinch": pinch, "winch": winch}
+        limits = {"pinch": config.CLIMB_PINCH_LIMIT, "winch": config.CLIMB_WINCH_LIMIT}
+        self.last_climb_values = {}
+        self.last_climb_pulses_us = {}
+        for name, _, neutral_us, forward_us in config.CLIMB_OUTPUTS:
+            value = clamp(requested[name], 0.0, 1.0) * limits[name]
+            self.last_climb_values[name] = value
+            self.last_climb_pulses_us[name] = int(round(
+                neutral_us + (forward_us - neutral_us) * value
+            ))
 
         pulses = dict(motor_pulses_us)
+        pulses.update(self.last_climb_pulses_us)
         if self.suspension_enabled:
             pulses.update(
                 ("suspension_" + name, pulse)
@@ -282,11 +304,22 @@ def draw(screen, steering, throttle, output, message):
         suspension_status(output, "rear_left")
         + " " + suspension_status(output, "rear_right"),
         "",
+        "[Climb]",
+        "pinch=" + str(round(output.last_climb_values["pinch"], 3))
+        + "@" + str(output.last_climb_pulses_us["pinch"])
+        + " channel=" + str(config.CLIMB_PINCH_CHANNEL),
+        "winch=" + str(round(output.last_climb_values["winch"], 3))
+        + "@" + str(output.last_climb_pulses_us["winch"])
+        + " channel=" + str(config.CLIMB_WINCH_CHANNEL),
+        "limits pinch/winch=" + str(config.CLIMB_PINCH_LIMIT)
+        + "/" + str(config.CLIMB_WINCH_LIMIT),
+        "",
         "[Keys]",
         "A center turn        S full left    D full right",
         "J/I throttle +step/full forward    L/M throttle -step/full reverse",
         "K neutral throttle   W/E turn -/+ step",
         "B bottom suspension  R raise suspension",
+        "U/O/P pinch step/full/neutral   V/N/C winch step/full/neutral",
         "Space all neutral    Q quit",
         "",
         "[Status]",
@@ -303,6 +336,8 @@ def draw(screen, steering, throttle, output, message):
 def run(screen, output):
     steering = 0.0
     throttle = 0.0
+    pinch = 0.0
+    winch = 0.0
     message = "Ready. Wheels should be off the ground."
     output.neutralize()
     draw(screen, steering, throttle, output, message)
@@ -325,6 +360,8 @@ def run(screen, output):
         if key == " ":
             steering = 0.0
             throttle = 0.0
+            pinch = 0.0
+            winch = 0.0
             message = "All neutral."
         elif key == "a":
             steering = 0.0
@@ -357,17 +394,35 @@ def run(screen, output):
             throttle = clamp(throttle - THROTTLE_STEP, -1.0, 1.0)
             message = "Throttle stepped reverse."
         elif key == "b":
-            output.apply(steering, throttle, "bottomed")
+            output.apply(steering, throttle, "bottomed", pinch, winch)
             message = "Suspension bottomed."
             continue
         elif key == "r":
-            output.apply(steering, throttle, "raised")
+            output.apply(steering, throttle, "raised", pinch, winch)
             message = "Suspension raised."
             continue
+        elif key == "u":
+            pinch = clamp(pinch + CLIMB_STEP, 0.0, 1.0)
+            message = "Pinch stepped forward."
+        elif key == "o":
+            pinch = 1.0
+            message = "Pinch full configured output."
+        elif key == "p":
+            pinch = 0.0
+            message = "Pinch neutral."
+        elif key == "v":
+            winch = clamp(winch + CLIMB_STEP, 0.0, 1.0)
+            message = "Winch stepped inward."
+        elif key == "n":
+            winch = 1.0
+            message = "Winch full configured output."
+        elif key == "c":
+            winch = 0.0
+            message = "Winch neutral."
         else:
             message = "Unknown key: " + repr(key)
 
-        output.apply(steering, throttle)
+        output.apply(steering, throttle, pinch=pinch, winch=winch)
 
     output.neutralize()
 

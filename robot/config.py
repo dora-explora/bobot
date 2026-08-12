@@ -93,6 +93,35 @@ MOTOR_ESC_US = {
     "rear_left": env_pulse_triplet("MOTOR_REAR_LEFT_ESC_US", SHARED_ESC_US),
     "rear_right": env_pulse_triplet("MOTOR_REAR_RIGHT_ESC_US", SHARED_ESC_US),
 }
+CLIMB_PINCH_CHANNEL = env_int("CLIMB_PINCH_CHANNEL", "5")
+CLIMB_WINCH_CHANNEL = env_int("CLIMB_WINCH_CHANNEL", "4")
+CLIMB_PINCH_NEUTRAL_US = env_int("CLIMB_PINCH_NEUTRAL_US", "1500")
+CLIMB_PINCH_FORWARD_US = env_int("CLIMB_PINCH_FORWARD_US", "1600")
+CLIMB_WINCH_NEUTRAL_US = env_int("CLIMB_WINCH_NEUTRAL_US", "1500")
+CLIMB_WINCH_FORWARD_US = env_int("CLIMB_WINCH_FORWARD_US", "1600")
+CLIMB_PINCH_LIMIT = env_float("CLIMB_PINCH_LIMIT", "0.25")
+CLIMB_WINCH_LIMIT = env_float("CLIMB_WINCH_LIMIT", "0.25")
+CLIMB_STICK_DEADZONE = env_float("CLIMB_STICK_DEADZONE", "0.10")
+if not 0.0 <= CLIMB_PINCH_LIMIT <= 1.0:
+    raise ValueError("CLIMB_PINCH_LIMIT must be between 0 and 1")
+if not 0.0 <= CLIMB_WINCH_LIMIT <= 1.0:
+    raise ValueError("CLIMB_WINCH_LIMIT must be between 0 and 1")
+if not 0.0 <= CLIMB_STICK_DEADZONE < 1.0:
+    raise ValueError("CLIMB_STICK_DEADZONE must be at least 0 and less than 1")
+if any(
+    not 500 <= pulse <= 2500
+    for pulse in (
+        CLIMB_PINCH_NEUTRAL_US,
+        CLIMB_PINCH_FORWARD_US,
+        CLIMB_WINCH_NEUTRAL_US,
+        CLIMB_WINCH_FORWARD_US,
+    )
+):
+    raise ValueError("Climb PWM pulses must be between 500 and 2500 microseconds")
+CLIMB_OUTPUTS = (
+    ("pinch", CLIMB_PINCH_CHANNEL, CLIMB_PINCH_NEUTRAL_US, CLIMB_PINCH_FORWARD_US),
+    ("winch", CLIMB_WINCH_CHANNEL, CLIMB_WINCH_NEUTRAL_US, CLIMB_WINCH_FORWARD_US),
+)
 
 SUSPENSION_ENABLED = env_bool("SUSPENSION_ENABLED", "true")
 SUSPENSION_START_STATE = os.environ.get("SUSPENSION_START_STATE", "bottomed").lower()
@@ -167,6 +196,7 @@ SUSPENSION_OUTPUTS = (
     ),
 )
 _pca_channels = [channel for _, channel, _ in MOTOR_OUTPUTS]
+_pca_channels.extend(channel for _, channel, _, _ in CLIMB_OUTPUTS)
 if SUSPENSION_ENABLED:
     _pca_channels.extend(channel for _, channel, _, _ in SUSPENSION_OUTPUTS)
 if any(channel < 0 or channel > 15 for channel in _pca_channels):

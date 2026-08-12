@@ -31,6 +31,12 @@ def throttle_pulse(command, esc_us):
     return normalized_to_pulse(normalize_throttle(command), reverse_us, neutral_us, forward_us)
 
 
+def climb_output(command, limit, neutral_us, forward_us):
+    value = clamp(command, 0.0, 1.0) * clamp(limit, 0.0, 1.0)
+    pulse = int(round(neutral_us + (forward_us - neutral_us) * value))
+    return value, pulse
+
+
 def suspension_pulses(state):
     if state not in config.SUSPENSION_STATES:
         raise ValueError("invalid suspension state: " + state)
@@ -199,6 +205,10 @@ class Pca9685Actuators:
         self.enabled = config.ENABLE_ACTUATORS
         self.last_motor_values = {}
         self.last_motor_pulses_us = {}
+        self.last_climb_values = {"pinch": 0.0, "winch": 0.0}
+        self.last_climb_pulses_us = {
+            name: neutral_us for name, _, neutral_us, _ in config.CLIMB_OUTPUTS
+        }
         self.suspension_state = config.SUSPENSION_START_STATE
         self.last_suspension_pulses_us = suspension_pulses(self.suspension_state)
         self.watchdog = None
@@ -213,6 +223,12 @@ class Pca9685Actuators:
         outputs = tuple((name, channel) for name, channel, _ in config.MOTOR_OUTPUTS)
         initial_pulses = dict(motor_neutral_pulses)
         failsafe_pulses = dict(motor_neutral_pulses)
+        outputs += tuple((name, channel) for name, channel, _, _ in config.CLIMB_OUTPUTS)
+        climb_neutral_pulses = {
+            name: neutral_us for name, _, neutral_us, _ in config.CLIMB_OUTPUTS
+        }
+        initial_pulses.update(climb_neutral_pulses)
+        failsafe_pulses.update(climb_neutral_pulses)
         if config.SUSPENSION_ENABLED:
             outputs += tuple(
                 ("suspension_" + name, channel)
@@ -260,8 +276,25 @@ class Pca9685Actuators:
             name: throttle_pulse(value, config.MOTOR_ESC_US[name])
             for name, value in requested.items()
         }
+        climb_requested = {"pinch": command.pinch, "winch": command.winch}
+        climb_limits = {
+            "pinch": config.CLIMB_PINCH_LIMIT,
+            "winch": config.CLIMB_WINCH_LIMIT,
+        }
+        self.last_climb_values = {}
+        self.last_climb_pulses_us = {}
+        for name, _, neutral_us, forward_us in config.CLIMB_OUTPUTS:
+            value, pulse = climb_output(
+                climb_requested[name],
+                climb_limits[name],
+                neutral_us,
+                forward_us,
+            )
+            self.last_climb_values[name] = value
+            self.last_climb_pulses_us[name] = pulse
         if self.enabled:
             pulses = dict(self.last_motor_pulses_us)
+            pulses.update(self.last_climb_pulses_us)
             if config.SUSPENSION_ENABLED:
                 pulses.update(
                     ("suspension_" + name, pulse)
