@@ -92,7 +92,7 @@ class TuiDashboard:
                 "Robot Code TUI",
                 "[State] active=" + state_name + " menu=" + str(mode_control.menu_active)
                 + " available=" + ",".join(mode_control.available_states),
-                "controls A=manual B=static hold-Y=menu D-pad=limit manual bumpers/triggers=suspension",
+                "controls A=manual B=static hold-Y=menu triggers=limit manual bumpers/D-pad=suspension",
                 "last_action=" + mode_control.last_action,
                 "[Status] camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1))
@@ -108,7 +108,7 @@ class TuiDashboard:
                 "Robot Code TUI", "==============", "",
                 "[State]", "active=" + state_name + "  menu=" + str(mode_control.menu_active)
                 + "  available=" + ",".join(mode_control.available_states),
-                "controls: A=manual B=static hold Y=menu D-pad=limit manual bumpers/triggers=suspension",
+                "controls: A=manual B=static hold Y=menu triggers=limit manual bumpers/D-pad=suspension",
                 "last_action=" + mode_control.last_action, "",
                 "[Status]", "camera=" + self._camera_status(frame, mode_control)
                 + " fps=" + str(round(fps, 1)) + " headless=" + str(config.HEADLESS),

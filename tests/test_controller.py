@@ -72,8 +72,9 @@ class ControllerInputTests(unittest.TestCase):
         self.assertTrue(update.stability_pressed)
         self.assertTrue(update.left_bumper_pressed)
         self.assertTrue(update.right_bumper_pressed)
-        self.assertTrue(update.front_suspension_pressed)
-        self.assertTrue(update.rear_suspension_pressed)
+        self.assertEqual(update.throttle_limit_delta, 0)
+        self.assertFalse(update.front_suspension_pressed)
+        self.assertFalse(update.rear_suspension_pressed)
         self.assertFalse(update.y_released)
 
     def test_button_release_and_unmapped_input_do_not_change_modes(self):
@@ -92,6 +93,17 @@ class ControllerInputTests(unittest.TestCase):
         self.assertFalse(update.stability_pressed)
         self.assertEqual(update.throttle_limit_delta, 0)
 
+    def test_trigger_buttons_adjust_throttle_limit(self):
+        controller = controller_with_events([
+            SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_LEFT_TRIGGER_BUTTON, value=1),
+        ])
+        self.assertEqual(controller.poll().throttle_limit_delta, -1)
+
+        controller.device.events = [
+            SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_RIGHT_TRIGGER_BUTTON, value=1),
+        ]
+        self.assertEqual(controller.poll().throttle_limit_delta, 1)
+
     def test_y_release_is_reported_separately_from_y_press(self):
         controller = controller_with_events([
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_Y_BUTTON, value=0),
@@ -102,7 +114,7 @@ class ControllerInputTests(unittest.TestCase):
         self.assertFalse(update.y_pressed)
         self.assertTrue(update.y_released)
 
-    def test_dpad_axis_and_buttons_adjust_the_throttle_limit(self):
+    def test_dpad_axis_and_buttons_select_front_and_rear_suspension(self):
         controller = controller_with_events([
             SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_DPAD_Y_AXIS, value=-1),
             SimpleNamespace(type=FakeEcodes.EV_KEY, code=config.CONTROLLER_DPAD_DOWN_BUTTON, value=1),
@@ -110,13 +122,16 @@ class ControllerInputTests(unittest.TestCase):
 
         update = controller.poll()
 
+        self.assertTrue(update.front_suspension_pressed)
+        self.assertTrue(update.rear_suspension_pressed)
         self.assertEqual(update.throttle_limit_delta, 0)
 
         controller.device.events = [
             SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_DPAD_Y_AXIS, value=-1),
         ]
         update = controller.poll()
-        self.assertEqual(update.throttle_limit_delta, 1)
+        self.assertTrue(update.front_suspension_pressed)
+        self.assertFalse(update.rear_suspension_pressed)
 
     def test_radial_menu_uses_the_most_recently_moved_stick(self):
         controller = controller_with_events([])
@@ -140,26 +155,25 @@ class ControllerInputTests(unittest.TestCase):
         self.assertGreater(menu_x, 0.9)
         self.assertAlmostEqual(menu_y, 0.0, places=3)
 
-    def test_analog_triggers_emit_only_on_press_edges(self):
+    def test_analog_triggers_adjust_limit_only_on_press_edges(self):
         controller = controller_with_events([
             SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=200),
             SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_RIGHT_TRIGGER_AXIS, value=200),
         ])
 
         update = controller.poll()
-        self.assertTrue(update.front_suspension_pressed)
-        self.assertTrue(update.rear_suspension_pressed)
+        self.assertEqual(update.throttle_limit_delta, 0)
 
         controller.device.events = [
             SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=220),
         ]
-        self.assertFalse(controller.poll().front_suspension_pressed)
+        self.assertEqual(controller.poll().throttle_limit_delta, 0)
 
         controller.device.events = [
             SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=0),
             SimpleNamespace(type=FakeEcodes.EV_ABS, code=config.CONTROLLER_LEFT_TRIGGER_AXIS, value=255),
         ]
-        self.assertTrue(controller.poll().front_suspension_pressed)
+        self.assertEqual(controller.poll().throttle_limit_delta, -1)
 
 if __name__ == "__main__":
     unittest.main()

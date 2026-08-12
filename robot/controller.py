@@ -129,8 +129,10 @@ class ControllerInput:
                     update.left_bumper_pressed |= event.code == config.CONTROLLER_LEFT_BUMPER_BUTTON
                     update.right_bumper_pressed |= event.code == config.CONTROLLER_RIGHT_BUMPER_BUTTON
                     update.stability_pressed |= event.code == config.CONTROLLER_STABILITY_BUTTON
-                    update.front_suspension_pressed |= event.code == config.CONTROLLER_LEFT_TRIGGER_BUTTON
-                    update.rear_suspension_pressed |= event.code == config.CONTROLLER_RIGHT_TRIGGER_BUTTON
+                    if event.code == config.CONTROLLER_LEFT_TRIGGER_BUTTON:
+                        update.throttle_limit_delta -= 1
+                    elif event.code == config.CONTROLLER_RIGHT_TRIGGER_BUTTON:
+                        update.throttle_limit_delta += 1
                 if event.value != 1:
                     continue
                 if event.code == config.CONTROLLER_A_BUTTON:
@@ -142,9 +144,9 @@ class ControllerInput:
                 elif event.code == config.CONTROLLER_CAPTURE_BUTTON:
                     update.capture_pressed = True
                 elif event.code == config.CONTROLLER_DPAD_UP_BUTTON:
-                    update.throttle_limit_delta += 1
+                    update.front_suspension_pressed = True
                 elif event.code == config.CONTROLLER_DPAD_DOWN_BUTTON:
-                    update.throttle_limit_delta -= 1
+                    update.rear_suspension_pressed = True
             elif event.type == self.ecodes.EV_ABS:
                 self.axis_values[event.code] = event.value
                 trigger = self._trigger_for_axis(event.code)
@@ -153,14 +155,14 @@ class ControllerInput:
                     newly_pressed = active and not self._trigger_active[trigger]
                     self._trigger_active[trigger] = active
                     if trigger == "left":
-                        update.front_suspension_pressed |= newly_pressed
+                        update.throttle_limit_delta -= int(newly_pressed)
                     else:
-                        update.rear_suspension_pressed |= newly_pressed
+                        update.throttle_limit_delta += int(newly_pressed)
                 if event.code == config.CONTROLLER_DPAD_Y_AXIS:
                     if event.value < 0:
-                        update.throttle_limit_delta += 1
+                        update.front_suspension_pressed = True
                     elif event.value > 0:
-                        update.throttle_limit_delta -= 1
+                        update.rear_suspension_pressed = True
                 stick = self._menu_stick_for_axis(event.code)
                 if stick is not None:
                     self._menu_input_sequence += 1
@@ -224,7 +226,7 @@ class ControllerInput:
             "menu source=" + menu_source + " x=" + str(round(menu_x, 3)) + " y=" + str(round(menu_y, 3)),
             "menu left x=" + str(round(left_menu_x, 3)) + " y=" + str(round(left_menu_y, 3))
             + " right x=" + str(round(right_menu_x, 3)) + " y=" + str(round(right_menu_y, 3)),
-            "D-pad up/down adjusts throttle limit by " + str(config.THROTTLE_LIMIT_STEP)
+            "triggers left/right adjust throttle limit -/+ " + str(config.THROTTLE_LIMIT_STEP)
             + " current=" + str(round(config.THROTTLE_LIMIT, 3)),
             "axes Lx/Ly/Rx/Ry=" + "/".join(str(code) for code in self._stick_axes())
             + " buttons A/B/Y/X-capture/stability=" + "/".join(str(code) for code in (
@@ -238,7 +240,7 @@ class ControllerInput:
             + "/" + str(config.CONTROLLER_RIGHT_BUMPER_BUTTON)
             + " deadzone=" + str(config.CONTROLLER_DEADZONE)
             + " menu_deadzone=" + str(config.CONTROLLER_MENU_DEADZONE),
-            "D-pad axis=" + str(config.CONTROLLER_DPAD_Y_AXIS)
+            "D-pad suspension front/rear axis=" + str(config.CONTROLLER_DPAD_Y_AXIS)
             + " buttons up/down=" + str(config.CONTROLLER_DPAD_UP_BUTTON)
             + "/" + str(config.CONTROLLER_DPAD_DOWN_BUTTON),
             "triggers axes L/R=" + str(config.CONTROLLER_LEFT_TRIGGER_AXIS)

@@ -240,7 +240,7 @@ class StaticState:
         return StateResult(
             command=DriveCommand(mode="static", reason="static mode"),
             state_lines=self.controller.debug_lines() + [
-                "motors neutral; D-pad up/down adjusts limit; A=manual hold Y=radial menu B=remain static",
+                "motors neutral; triggers L/R lower/raise limit; A=manual hold Y=radial menu B=remain static",
             ],
             attitude=attitude,
             horizon=horizon,
@@ -506,7 +506,7 @@ def run():
                 if current_limit != previous_limit:
                     direction = "increased" if current_limit > previous_limit else "decreased"
                     mode_control.last_action = (
-                        "D-pad " + direction + " throttle limit to "
+                        "Trigger " + direction + " throttle limit to "
                         + str(round(current_limit * 100.0)) + "%"
                     )
             menu_stick, menu_stick_source = controller.menu_stick()

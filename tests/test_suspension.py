@@ -77,7 +77,7 @@ class SuspensionControlTests(unittest.TestCase):
         self.assertEqual(message, "")
         self.assertEqual(suspension.state, "bottomed")
 
-    def test_triggers_select_front_or_rear_bottomed(self):
+    def test_dpad_selects_front_or_rear_bottomed(self):
         suspension = SuspensionControl("raised")
 
         suspension.update("manual", ControllerUpdate(front_suspension_pressed=True))

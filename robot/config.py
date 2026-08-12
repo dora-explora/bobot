@@ -71,7 +71,7 @@ if not 0.0 < THROTTLE_LIMIT_STEP <= 1.0:
 
 
 def adjust_throttle_limit(direction):
-    """Apply one D-pad adjustment and return the updated runtime limit."""
+    """Apply one controller adjustment and return the updated runtime limit."""
     global THROTTLE_LIMIT
     THROTTLE_LIMIT = min(1.0, max(0.0, THROTTLE_LIMIT + direction * THROTTLE_LIMIT_STEP))
     return THROTTLE_LIMIT

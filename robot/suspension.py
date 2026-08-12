@@ -11,14 +11,14 @@ class SuspensionControl:
         self.last_action = "startup " + start_state
 
     def update(self, active_state, controller_update):
-        """Use bumper and trigger presses only in the manual drive state."""
+        """Use bumper and D-pad presses only in the manual drive state."""
         if active_state != "manual" or controller_update is None:
             return ""
         actions = [
             (controller_update.left_bumper_pressed, "bottomed", "left bumper"),
             (controller_update.right_bumper_pressed, "raised", "right bumper"),
-            (controller_update.front_suspension_pressed, "front_bottomed", "left trigger"),
-            (controller_update.rear_suspension_pressed, "rear_bottomed", "right trigger"),
+            (controller_update.front_suspension_pressed, "front_bottomed", "D-pad up"),
+            (controller_update.rear_suspension_pressed, "rear_bottomed", "D-pad down"),
         ]
         requested = [action for action in actions if action[0]]
         if len(requested) != 1:
