@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from robot import config
-from robot.actuators import climb_output
+from robot.actuators import _duty_cycle_for_pulse, climb_output
 from robot.climb import ClimbState
 
 
@@ -34,3 +34,9 @@ class ClimbTests(unittest.TestCase):
         self.assertEqual(value, 0.125)
         self.assertEqual(pulse, 1525)
 
+    def test_bts7960_winch_uses_full_50_hz_duty_range(self):
+        value, pulse = climb_output(1.0, 0.25, 0, 20000)
+        self.assertEqual(value, 0.25)
+        self.assertEqual(pulse, 5000)
+        self.assertEqual(_duty_cycle_for_pulse(0), 0)
+        self.assertEqual(_duty_cycle_for_pulse(20000), 65535)

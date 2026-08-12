@@ -97,8 +97,8 @@ CLIMB_PINCH_CHANNEL = env_int("CLIMB_PINCH_CHANNEL", "5")
 CLIMB_WINCH_CHANNEL = env_int("CLIMB_WINCH_CHANNEL", "4")
 CLIMB_PINCH_NEUTRAL_US = env_int("CLIMB_PINCH_NEUTRAL_US", "1500")
 CLIMB_PINCH_FORWARD_US = env_int("CLIMB_PINCH_FORWARD_US", "1600")
-CLIMB_WINCH_NEUTRAL_US = env_int("CLIMB_WINCH_NEUTRAL_US", "1500")
-CLIMB_WINCH_FORWARD_US = env_int("CLIMB_WINCH_FORWARD_US", "1600")
+CLIMB_WINCH_NEUTRAL_US = env_int("CLIMB_WINCH_NEUTRAL_US", "0")
+CLIMB_WINCH_FORWARD_US = env_int("CLIMB_WINCH_FORWARD_US", "20000")
 CLIMB_PINCH_LIMIT = env_float("CLIMB_PINCH_LIMIT", "0.25")
 CLIMB_WINCH_LIMIT = env_float("CLIMB_WINCH_LIMIT", "0.25")
 CLIMB_STICK_DEADZONE = env_float("CLIMB_STICK_DEADZONE", "0.10")
@@ -108,16 +108,10 @@ if not 0.0 <= CLIMB_WINCH_LIMIT <= 1.0:
     raise ValueError("CLIMB_WINCH_LIMIT must be between 0 and 1")
 if not 0.0 <= CLIMB_STICK_DEADZONE < 1.0:
     raise ValueError("CLIMB_STICK_DEADZONE must be at least 0 and less than 1")
-if any(
-    not 500 <= pulse <= 2500
-    for pulse in (
-        CLIMB_PINCH_NEUTRAL_US,
-        CLIMB_PINCH_FORWARD_US,
-        CLIMB_WINCH_NEUTRAL_US,
-        CLIMB_WINCH_FORWARD_US,
-    )
-):
-    raise ValueError("Climb PWM pulses must be between 500 and 2500 microseconds")
+if any(not 500 <= pulse <= 2500 for pulse in (CLIMB_PINCH_NEUTRAL_US, CLIMB_PINCH_FORWARD_US)):
+    raise ValueError("Climb pinch PWM pulses must be between 500 and 2500 microseconds")
+if any(not 0 <= pulse <= 20000 for pulse in (CLIMB_WINCH_NEUTRAL_US, CLIMB_WINCH_FORWARD_US)):
+    raise ValueError("Climb winch PWM duty pulses must be between 0 and 20000 microseconds at 50 Hz")
 CLIMB_OUTPUTS = (
     ("pinch", CLIMB_PINCH_CHANNEL, CLIMB_PINCH_NEUTRAL_US, CLIMB_PINCH_FORWARD_US),
     ("winch", CLIMB_WINCH_CHANNEL, CLIMB_WINCH_NEUTRAL_US, CLIMB_WINCH_FORWARD_US),
