@@ -541,13 +541,10 @@ def run():
                 horizon,
                 controller_update,
             )
-            imu_i2c_fault = bool(getattr(attitude, "i2c_fault", False))
             output_command = mode_control.gate_command(
                 result.command,
-                decision.neutralize_this_frame or imu_i2c_fault,
+                decision.neutralize_this_frame,
             )
-            if imu_i2c_fault:
-                mode_control.last_action = "IMU I2C fault; outputs neutral pending reconnect"
             try:
                 actuators.apply(output_command, suspension.state)
                 last_actuator_error = ""
